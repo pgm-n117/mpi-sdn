@@ -73,7 +73,7 @@ int main(int argc, char **argv){
 
     //Comprobar si la matriz A es divisible por filas entre el número de procesos:
     if(iA % size != 0){
-        MPI_Finalize();
+        //MPI_Finalize();
         if(node == 0) printf("No se puede repartir la matriz entre el número de nodos\n");
         free(mA);
         free(mB);
@@ -139,7 +139,7 @@ int main(int argc, char **argv){
     if(node == 0){
         
         time = (stop.tv_sec + stop.tv_usec * 1e-6) - (start.tv_sec + start.tv_usec * 1e-6);
-        printf("Tiempo de ejecución: %f\n", time);
+       printf("Tiempo de ejecución: %f\n", time);
     
     }
     

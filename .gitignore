@@ -1,3 +1,4 @@
 *~
 ./MPI/src/hostfile
 *.o
+*.txt

@@ -1,4 +1,4 @@
-vesuvius slots=8
+#vesuvius slots=8
 nodo01 slots=8
 nodo02 slots=8
 nodo03 slots=8

@@ -6,6 +6,7 @@
 *.row
 *.mpit
 *.mpits
-./MPI/SRC/set-*
+*.sym
+src/set-0
 extrae_test.sh
 extrae_script.sh

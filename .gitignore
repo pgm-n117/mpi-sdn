@@ -1,4 +1,11 @@
 *~
-./MPI/src/hostfile
 *.o
 *.txt
+*.pcf
+*.prv
+*.row
+*.mpit
+*.mpits
+./MPI/SRC/set-*
+extrae_test.sh
+extrae_script.sh

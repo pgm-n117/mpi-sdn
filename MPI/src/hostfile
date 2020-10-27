@@ -1,5 +1,5 @@
-vesuvius slots=2
-nodo01 slots=2
+vesuvius slots=8
+nodo01 slots=8
 nodo02 slots=8
 nodo03 slots=8
 nodo04 slots=8

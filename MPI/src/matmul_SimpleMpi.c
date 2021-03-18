@@ -20,7 +20,7 @@ void save_matrix(double *, int, int, char *);
 int main(int argc, char **argv){ 
 
     int i;
-
+    int write_solution;
     int node;					//Nº de tarea / proceso
     int size;					//Nº de procesos disponibles
     
@@ -52,7 +52,8 @@ int main(int argc, char **argv){
         exit(-1);
     }
 
-
+    write_solution = 0;
+    
     //Inicio del programa paralelo
     MPI_Init(&argc, &argv);			//Inicio de programa MPI
     
@@ -67,23 +68,23 @@ int main(int argc, char **argv){
     double *mA = matrix(iA, jA);
     double *mB = matrix(iB, jB);
     double *mC = matrix(iA, jB);
-
-
-    //Creamos el buffer donde recibiremos la submatriz de A
-    double *buffmA = matrix((iA/size), jA);
-    double *buffmC = matrix((iA/size), jB);
+    
 
     //Comprobar si la matriz A es divisible por filas entre el número de procesos:
     if(node==0){
         if(iA % size != 0){
-            //MPI_Finalize();
-            if(node == 0) printf("No se puede repartir la matriz entre el número de nodos\n");
+            printf("No se puede repartir la matriz entre el número de nodos\n");
+            MPI_Finalize();
             free(mA);
             free(mB);
             free(mC);
             exit(-1);   
         }
     }
+    
+    //Creamos el buffer donde recibiremos la submatriz de A
+    double *buffmA = matrix((iA/size), jA);
+    double *buffmC = matrix((iA/size), jB);
     
     
     //Hacer división de las matrices dependiendo de los procesos
@@ -103,6 +104,7 @@ int main(int argc, char **argv){
 
         if(argc > 4){
             if(*argv[4] == 'd'){		//debug
+                write_solution=1;
                 save_matrix(mA, iA, jA, "mA_mpi.txt");
                 save_matrix(mB, iB, jB, "mB_mpi.txt");
                 print_matrix(mA, iA, jA);
@@ -128,16 +130,16 @@ int main(int argc, char **argv){
         //Computo local
         //Le pasamos solo el rango de la submatriz de A, y se guardará en su correspondiente espacio en C
         matmul(mA, mB, mC, (iA/size), jA, iB, jB); 
-
+        
         //recepción de resultados en C
         for(i=1; i<size; i++){
-            MPI_Recv(&mC[buffsize*i], (iA/size)*jB, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE); //Envío de B
+            MPI_Recv(&mC[(iA/size)*jB*i], (iA/size)*jB, MPI_DOUBLE, i, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE); //Envío de B
         }
 
     } else {            //Resto de procesos
 
-
         MPI_Recv(mB, iB*jB, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE); //Recepción de B
+        
         MPI_Recv(buffmA, buffsize, MPI_DOUBLE, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE); //Recepción de submatriz de A
 
         //Computo local
@@ -148,23 +150,23 @@ int main(int argc, char **argv){
         MPI_Send(buffmC, (iA/size)*jB, MPI_DOUBLE, 0, 2, MPI_COMM_WORLD); //Envío de B
 
     }
-    
   
     //gettimeofday(&stop, NULL);		//Dejamos de contar el tiempo de ejecucion
 
     if(node == 0){
         time += MPI_Wtime();          //Final del contador de tiempo
-        save_matrix(mC, iA, jB, "resultado_mpiSimple.txt");
+        if(write_solution) save_matrix(mC, iA, jB, "resultado_mpiSimple.txt");
     }
     
     free(buffmA);
     free(buffmC);
     free(mB);
-
-    MPI_Finalize();				//Final de programa MPI
-
     free(mA);
     free(mC);
+    
+    MPI_Finalize();				//Final de programa MPI
+
+
     
     
     if(node == 0){

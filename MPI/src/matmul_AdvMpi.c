@@ -22,7 +22,7 @@ int main(int argc, char **argv){
 
     int node;					//Nº de tarea / proceso
     int size;					//Nº de procesos disponibles
-    
+    int write_solution;
     int iA, jA, iB, jB;		//iA, jA: filas x columnas de A, columnas de B
     //Para matrices de tamaños distintos, jA sería igual a iB 
     //i es el número de filas, tamaño de columna
@@ -61,6 +61,7 @@ int main(int argc, char **argv){
     double *mC = matrix(iA, jB);
     
 
+    write_solution=0;
     //Inicio del programa paralelo
     MPI_Init(&argc, &argv);			//Inicio de programa MPI
     
@@ -71,8 +72,8 @@ int main(int argc, char **argv){
 
     //Comprobar si la matriz A es divisible por filas entre el número de procesos:
     if(iA % size != 0){
-        //MPI_Finalize();
-        if(node == 0) printf("No se puede repartir la matriz entre el número de nodos\n");
+        MPI_Finalize();
+        printf("No se puede repartir la matriz entre el número de nodos\n");
         free(mA);
         free(mB);
         free(mC);
@@ -94,6 +95,7 @@ int main(int argc, char **argv){
     
         if(argc > 4){
     	    if(*argv[4] == 'd'){		//debug
+    	    	write_solution=1;
     	        save_matrix(mA, iA, jA, "mA_mpi.txt");
     	        save_matrix(mB, iB, jB, "mB_mpi.txt");
     	        print_matrix(mA, iA, jA);
@@ -124,17 +126,18 @@ int main(int argc, char **argv){
 
     if(node == 0){
         time += MPI_Wtime();        //Final del contador de tiempo
-        save_matrix(mC, iA, jB, "resultado_mpiAdv.txt");
+        if(write_solution) save_matrix(mC, iA, jB, "resultado_mpiAdv.txt");
     }
     
     free(buffmA);
     free(buffmC);
     free(mB);
+    free(mA);
+    free(mC);
 
     MPI_Finalize();				//Final de programa MPI
 
-    free(mA);
-    free(mC);
+
     
     if(node == 0){
         

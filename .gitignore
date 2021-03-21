@@ -10,3 +10,5 @@
 src/set-0
 extrae_test.sh
 extrae_script.sh
+target/
+.idea/

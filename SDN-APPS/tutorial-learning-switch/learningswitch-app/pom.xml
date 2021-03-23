@@ -32,8 +32,8 @@
     <url>http://onosproject.org</url>
 
     <properties>
-        <onos.app.name>org.learningsiwtch.app</onos.app.name>
-        <onos.app.title>Learninswitch Tutorial App</onos.app.title>
+        <onos.app.name>org.learningswitch.app</onos.app.name>
+        <onos.app.title>Learning Switch Tutorial App</onos.app.title>
         <onos.app.origin>Pablo, Inc.</onos.app.origin>
         <onos.app.category>default</onos.app.category>
         <onos.app.url>http://onosproject.org</onos.app.url>

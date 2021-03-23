@@ -40,10 +40,7 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Dictionary;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
+import java.util.*;
 
 import static org.onlab.util.Tools.get;
 
@@ -54,9 +51,9 @@ import static org.onlab.util.Tools.get;
            service = {SomeInterface.class},
            property = {
                "someProperty=Some Default String Value",
-           })
-public class LearninSwitchTutorial implements SomeInterface {
-
+           },
+            enabled = true)
+public class LearningSwitch implements SomeInterface {
     //Choose logger to print messages
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -104,10 +101,12 @@ public class LearninSwitchTutorial implements SomeInterface {
     //+++Actions done when activating or deactivating app on the controller+++//
     @Activate
     protected void activate() {
+        System.out.println("activate()");
         cfgService.registerProperties(getClass());
         log.info("Started");
 
-        appId = coreService.getAppId("org.learningsiwtch.app"); //pom.xml app name
+
+        appId = coreService.getAppId((String)"org.learningswitch.app"); //pom.xml app name
 
         //!!!Create a processor and add it using packetService:
         processor = new SwitchPacketProcessor();
@@ -234,6 +233,7 @@ public class LearninSwitchTutorial implements SomeInterface {
             Map<MacAddress, PortNumber> macTable = macTables.get(cp.deviceId()); //->get the added entry of the device we put earlier
             //Obtain source address from packet and add it to device macTable
             MacAddress srcMac = pc.inPacket().parsed().getSourceMAC();
+            log.info("PUTTING NEW DEVICE ON " +cp.deviceId().toString() + "MAC TABLE: "+ srcMac.toString());
             macTable.put(srcMac, cp.port());
 
             //Obtain destination address from packet to know if we learned earlier
@@ -260,13 +260,16 @@ public class LearninSwitchTutorial implements SomeInterface {
                  * Priority of the rule: REACTIVE, and a limited time of 60 seconds.
                  * We can also specify which app is applying a rule into a switch
                  */
+                log.info("INSTALLING FLOWRULE ON" + cp.deviceId().toString());
                 FlowRule fr = DefaultFlowRule.builder()
                         .withSelector(DefaultTrafficSelector.builder().matchEthDst(dstMac).build())
                         .withTreatment(DefaultTrafficTreatment.builder().setOutput(outPort).build())
                         .forDevice(cp.deviceId()).withPriority(PacketPriority.REACTIVE.priorityValue())
                         .makeTemporary(60).fromApp(appId).build();
                 //apply flowrule built
-                flowRuleService.applyFlowRules(fr);
+
+                cd ..
+                cdflowRuleService.applyFlowRules(fr);
                 //send the packet
                 pc.send();
 
@@ -279,5 +282,4 @@ public class LearninSwitchTutorial implements SomeInterface {
             }
         }
     }
-
 }

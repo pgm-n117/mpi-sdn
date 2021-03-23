@@ -25,18 +25,18 @@ import org.onosproject.cfg.ComponentConfigAdapter;
  */
 public class AppComponentTest {
 
-    private LearninSwitchTutorial component;
+    private LearningSwitch component;
 
     @Before
     public void setUp() {
-        component = new LearninSwitchTutorial();
+        component = new LearningSwitch();
         component.cfgService = new ComponentConfigAdapter();
-        component.activate();
+        //component.activate();
     }
 
     @After
     public void tearDown() {
-        component.deactivate();
+        //component.deactivate();
     }
 
     @Test

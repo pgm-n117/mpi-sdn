@@ -82,11 +82,7 @@ public class LearningSwitch implements SomeInterface {
      * Defining macTables as a concurrent map allows multiple threads and packets to
      * use the map without an issue.
      */
-    //macTables is a MAP of all network devices (Openflow Switches), containing all of their own <MAC, port> tables
-    /**
-     * NOT USING MAC TABLES AS L2 SWITCH, NOT RELEVANT ON A REACTIVE SWITCH ON THIS APPLICATION
-     */
-    /**protected Map<DeviceId, Map<MacAddress, PortNumber>> macTables = Maps.newConcurrentMap();**/
+
     //Storing App ID on activate process
     private ApplicationId appId;
 
@@ -158,9 +154,7 @@ public class LearningSwitch implements SomeInterface {
 
 
     /**
-     * This class contains pseudo code that you must replace with your own code in actLikeSwitch.  Your job is to
-     * send the packet out the port previously learned for the destination MAC.  If it does not exist,
-     * flood the packet out (to all ports).
+     * This class contains pseudo code that you must replace with your own code in actLikeSwitch. -> Reactive switch
      */
     private class SwitchPacketProcessor implements PacketProcessor {
         /**
@@ -177,7 +171,6 @@ public class LearningSwitch implements SomeInterface {
              */
             ConnectPoint cp = pc.inPacket().receivedFrom();
             //If we receive a packet from a network device not known yet, we include the new network device onto the macTables map
-            /**macTables.putIfAbsent(cp.deviceId(), Maps.newConcurrentMap());**/
 
 
             // This method simply floods all ports with the packet.
@@ -205,11 +198,9 @@ public class LearningSwitch implements SomeInterface {
         }
 
         /**
-         * Ensures packet is of required type. Obtain the port number associated with the packet's source ID.
-         * If this port has previously been learned (in the process method) build a flow using the packet's
-         * out port, treatment, destination, and other properties.  Send the flow to the learned out port.
-         * Otherwise, flood packet to all ports if out port has not been learned.
-         *
+         * Ensures packet is of required type. Obtain the port number associated with the packet's source ID, its source
+         * MAC and destination MAC. Installs a flowrule on the device: Packets going to destination: srcMAC, will be
+         * redirected to its input port.
          * @param pc the PacketContext object passed through from activate() method
          */
         public void actLikeSwitch(PacketContext pc) {
@@ -225,69 +216,46 @@ public class LearningSwitch implements SomeInterface {
             }
 
             /*
-             * Learn the destination, source, and output port of the packet using a ConnectPoint and the
-             * associated macTable.  If there is a known port associated with the packet's destination MAC Address,
-             * the output port will not be null.
+             * Get the destination, source, and input port of the packet using a ConnectPoint.
              */
+
             //find the packets connect point
             ConnectPoint cp = pc.inPacket().receivedFrom();
-            //Creating new macTable entry for macTables:
-            //Obtain the network device macTable and en
-            /**Map<MacAddress, PortNumber> macTable = macTables.get(cp.deviceId()); //->get the added entry of the device we put earlier**/
+
             //Obtain source address from packet and add it to device macTable
             MacAddress srcMac = pc.inPacket().parsed().getSourceMAC();
-            log.info("PUTTING NEW DEVICE ON " +cp.deviceId().toString() + "MAC TABLE: "+ srcMac.toString());
-            /**macTable.put(srcMac, cp.port());**/
 
-            //Obtain destination address from packet to know if we learned earlier
+            //Obtain destination address from packet to know if we learned earlier (not really needed)
             MacAddress dstMac = pc.inPacket().parsed().getDestinationMAC();
 
-            //save the outPort as a variable -> if the port is obtained from the macTable, it means we learned the destination address earlier
-            /**PortNumber outPort = macTable.get(dstMac);**/
+            //Obtain input port from packet
+            PortNumber inPort =  pc.inPacket().receivedFrom().port();
 
 
-            /*
-             * If port is known, set output port to the packet's learned output port and construct a
-             * FlowRule using a source, destination, treatment and other properties. Send the FlowRule
-             * to the designated output port.
+            /** Using default traffic selector, matching destination MAC addreses will get the treatment:
+             * Packets with destination address matching a known device (previously known source), will be redirected
+             * to the port which that device is connected
+             * This rule will be applied to the device: deviceId (device which received the inbound packet)
+             * Priority of the rule: REACTIVE, and a limited time of 60 seconds.
+             * We can also specify which app is applying a rule into a switch
              */
-            /**
-             * NOT USING MAC TABLES AS L2 SWITCH, NOT RELEVANT ON A REACTIVE SWITCH ON THIS APPLICATION:
-             * OUTPORT FROM MACTABLE NOT NEEDED
-             */
-            //if outPort isn't null-NOT USING THIS PART
-            /**
-            if(outPort != null){
-                //to send the packet
-                pc.treatmentBuilder().setOutput(outPort);
-                //construct the new flowrule for specified device:
 
-                 //* Using default traffic selector, matching destination MAC addreses will get the treatment:
-                 //* set the output device port of the packet to the specified device port found on the macTable (outPort)
-                 //* This rule will be applied to the device: deviceId (device which received the inbound packet)
-                 //* Priority of the rule: REACTIVE, and a limited time of 60 seconds.
-                 //* We can also specify which app is applying a rule into a switch
+            log.info("INSTALLING FLOWRULE ON " + cp.deviceId().toString());
+            FlowRule fr = DefaultFlowRule.builder()
+                    .withSelector(DefaultTrafficSelector.builder().matchEthDst(srcMac).build())
+                    .withTreatment(DefaultTrafficTreatment.builder().setOutput(inPort).build())
+                    .forDevice(cp.deviceId()).withPriority(PacketPriority.HIGH.priorityValue())
+                    .makeTemporary(60).fromApp(appId).build();
 
-                log.info("INSTALLING FLOWRULE ON" + cp.deviceId().toString());
-                FlowRule fr = DefaultFlowRule.builder()
-                        .withSelector(DefaultTrafficSelector.builder().matchEthDst(dstMac).build())
-                        .withTreatment(DefaultTrafficTreatment.builder().setOutput(outPort).build())
-                        .forDevice(cp.deviceId()).withPriority(PacketPriority.REACTIVE.priorityValue())
-                        .makeTemporary(60).fromApp(appId).build();
-                //apply flowrule built
+            //apply flowrule built
+            flowRuleService.applyFlowRules(fr);
+            //send the requested packet
+            actLikeHub(pc);
 
-                flowRuleService.applyFlowRules(fr);
-                //send the packet
-                pc.send();
-
-            }else {
-
-                 //* else, the output port has not been learned yet.  Flood the packet to all ports using
-                 //* the actLikeHub method
-                 
-                actLikeHub(pc);
-            }
-            */
         }
     }
 }
+
+
+
+

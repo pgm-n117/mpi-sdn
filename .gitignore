@@ -12,3 +12,4 @@ extrae_test.sh
 extrae_script.sh
 target/
 .idea/
+*hostfile

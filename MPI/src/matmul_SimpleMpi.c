@@ -52,7 +52,15 @@ int main(int argc, char **argv){
         exit(-1);
     }
 
+    //Se reserva el espacio para las matrices (nodo maestro)
+    //double *mA, *mB, *mC;	//matriz A, B y C (resultado)
+
+    double *mA = matrix(iA, jA);
+    double *mB = matrix(iB, jB);
+    double *mC = matrix(iA, jB);
+    
     write_solution = 0;
+    
     
     //Inicio del programa paralelo
     MPI_Init(&argc, &argv);			//Inicio de programa MPI
@@ -62,25 +70,27 @@ int main(int argc, char **argv){
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
 
-    //Se reserva el espacio para las matrices (nodo maestro)
-    //double *mA, *mB, *mC;	//matriz A, B y C (resultado)
 
-    double *mA = matrix(iA, jA);
-    double *mB = matrix(iB, jB);
-    double *mC = matrix(iA, jB);
+    //TEMPORAL
+    if(node==0){
+        printf("Tamaño de A en memoria: %lu\n", iA*jA*sizeof(double));
+        printf("Tamaño de B en memoria: %lu\n", iB*jB*sizeof(double));
+        printf("Tamaño de C en memoria: %lu\n", iA*jB*sizeof(double));
+        printf("\tTamaño de subA en memoria: %lu\n", (iA/size)*jA*sizeof(double));
+        printf("\tTamaño de subC en memoria: %lu\n", (iA/size)*jB*sizeof(double));    
+    }
     
 
     //Comprobar si la matriz A es divisible por filas entre el número de procesos:
-    if(node==0){
-        if(iA % size != 0){
-            printf("No se puede repartir la matriz entre el número de nodos\n");
+    if(iA % size != 0){
+            
             MPI_Finalize();
+            printf("No se puede repartir la matriz entre el número de nodos\n");
             free(mA);
             free(mB);
             free(mC);
             exit(-1);   
-        }
-    }
+     }
     
     //Creamos el buffer donde recibiremos la submatriz de A
     double *buffmA = matrix((iA/size), jA);

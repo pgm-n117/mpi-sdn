@@ -23,8 +23,8 @@
         <version>2.5.1</version>
     </parent>
 
-    <groupId>org.learningswitch</groupId>
-    <artifactId>learningswitch-app</artifactId>
+    <groupId>org.mpicontroller</groupId>
+    <artifactId>mpicontroller-app</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>bundle</packaging>
 
@@ -32,8 +32,8 @@
     <url>http://onosproject.org</url>
 
     <properties>
-        <onos.app.name>org.learningswitch.app</onos.app.name>
-        <onos.app.title>Learning Switch Tutorial App</onos.app.title>
+        <onos.app.name>org.mpicontroller.app</onos.app.name>
+        <onos.app.title>MPI Controller</onos.app.title>
         <onos.app.origin>Pablo, Inc.</onos.app.origin>
         <onos.app.category>default</onos.app.category>
         <onos.app.url>http://onosproject.org</onos.app.url>

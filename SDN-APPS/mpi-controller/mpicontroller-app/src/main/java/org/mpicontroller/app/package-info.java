@@ -13,35 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.learningswitch.app;
-
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.onosproject.cfg.ComponentConfigAdapter;
 
 /**
- * Set of tests of the ONOS application component.
+ * ONOS application archetype.
  */
-public class AppComponentTest {
-
-    private LearningSwitch component;
-
-    @Before
-    public void setUp() {
-        component = new LearningSwitch();
-        component.cfgService = new ComponentConfigAdapter();
-        //component.activate();
-    }
-
-    @After
-    public void tearDown() {
-        //component.deactivate();
-    }
-
-    @Test
-    public void basics() {
-
-    }
-
-}
+package org.mpicontroller.app;

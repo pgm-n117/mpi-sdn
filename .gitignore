@@ -13,3 +13,8 @@ extrae_script.sh
 target/
 .idea/
 *hostfile
+test/
+*.vscode
+bak/
+*.iml
+

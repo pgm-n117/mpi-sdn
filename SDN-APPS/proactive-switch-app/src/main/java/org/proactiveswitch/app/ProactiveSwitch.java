@@ -15,15 +15,16 @@
  */
 package org.proactiveswitch.app;
 
+import org.onlab.packet.EthType;
+import org.onlab.packet.Ethernet;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
+import org.onosproject.net.ConnectPoint;
+import org.onosproject.net.edge.EdgePortService;
 import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.FlowRuleService;
-import org.onosproject.net.packet.PacketContext;
-import org.onosproject.net.packet.PacketPriority;
-import org.onosproject.net.packet.PacketProcessor;
-import org.onosproject.net.packet.PacketService;
+import org.onosproject.net.packet.*;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -35,6 +36,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Dictionary;
+import java.util.Optional;
 import java.util.Properties;
 
 import static org.onlab.util.Tools.get;
@@ -43,11 +45,11 @@ import static org.onlab.util.Tools.get;
  * Skeletal ONOS application component.
  */
 @Component(immediate = true,
-           service = {SomeInterface.class},
+           service = {ProactiveSwitchInterface.class},
            property = {
                "someProperty=Some Default String Value",
            })
-public class ProactiveSwitch implements SomeInterface {
+public class ProactiveSwitch implements ProactiveSwitchInterface {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -66,13 +68,17 @@ public class ProactiveSwitch implements SomeInterface {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected CoreService coreService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected EdgePortService edgePortService;
+
     //---------------------------------------------//
 
     //Needed variables
     private ApplicationId appId;
 
-    //Procesador de paquetes utilizado para obtener paquetes de los switches
-    private PacketProcessor appPacketProcessor;
+    //Packet processor
+    private PacketProcessor proactiveSwitchProcessor;
 
     @Activate
     protected void activate() {
@@ -82,15 +88,19 @@ public class ProactiveSwitch implements SomeInterface {
         //Obtain app id
         appId = coreService.getAppId("org.proactiveswitch.app");
 
-        appPacketProcessor = new AppPacketProcessor();
+        //Procesador de paquetes
+        proactiveSwitchProcessor = new ProactiveSwitchProcessor();
+        packetService.addProcessor(proactiveSwitchProcessor, PacketProcessor.director(3));
 
-
-        packetService.addProcessor(appPacketProcessor, PacketProcessor.director(3));
-
-        //packetService.requestPackets(DefaultTrafficSelector.builder().match... /*elegir lospaquetes que queramos obtener*/);
-
-
-
+        //Request Packets - obtain first packages at the beginning.
+        //Packets can be obtained from edge devices only, as only them will have hosts connected
+        edgePortService.getEdgePoints().forEach(connectPoint -> {
+            log.info("EDGE DEVICE: "+ connectPoint.deviceId());
+            //ARP
+            packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+            //IPV4
+            packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+        });
     }
 
     @Deactivate
@@ -98,8 +108,16 @@ public class ProactiveSwitch implements SomeInterface {
         cfgService.unregisterProperties(getClass(), false);
         log.info("Stopped");
 
+        //Remove everything initialized on activate
+        edgePortService.getEdgePoints().forEach(connectPoint -> {
+            //ARP
+            packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+            //IPV4
+            packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+        });
 
-
+        flowRuleService.removeFlowRulesById(appId);
+        packetService.removeProcessor(proactiveSwitchProcessor);
     }
 
     @Modified
@@ -111,18 +129,35 @@ public class ProactiveSwitch implements SomeInterface {
         log.info("Reconfigured");
     }
 
+
+
     @Override
     public void someMethod() {
         log.info("Invoked");
     }
 
 
-    private class AppPacketProcessor implements PacketProcessor{
+    private class ProactiveSwitchProcessor implements PacketProcessor{
 
         @Override
         public void process(PacketContext context) {
 
-            //PROCESAR LOS PAQUETES AL OBTENERLOS
+            InboundPacket packet = context.inPacket();
+            Ethernet ethPacket = packet.parsed();
+            if(ethPacket == null) return;
+
+            //entry port from source device
+            ConnectPoint srcPort = packet.receivedFrom();
+
+            switch (EthType.EtherType.lookup(ethPacket.getEtherType())){
+                case LLDP:
+                    return;
+                case ARP:
+
+                    break;
+                case IPV4:
+                    break;
+            }
 
         }
     }

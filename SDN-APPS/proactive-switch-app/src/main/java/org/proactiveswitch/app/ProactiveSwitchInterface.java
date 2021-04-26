@@ -15,7 +15,7 @@
  */
 package org.proactiveswitch.app;
 
-public interface SomeInterface {
+public interface ProactiveSwitchInterface {
 
     void someMethod();
 

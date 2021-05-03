@@ -15,16 +15,17 @@
  */
 package org.proactiveswitch.app;
 
-import org.onlab.packet.EthType;
-import org.onlab.packet.Ethernet;
+import javafx.application.HostServices;
+import org.onlab.packet.*;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
-import org.onosproject.net.ConnectPoint;
+import org.onosproject.net.*;
 import org.onosproject.net.edge.EdgePortService;
-import org.onosproject.net.flow.DefaultTrafficSelector;
-import org.onosproject.net.flow.FlowRuleService;
+import org.onosproject.net.flow.*;
+import org.onosproject.net.host.HostService;
 import org.onosproject.net.packet.*;
+import org.onosproject.net.topology.TopologyService;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -35,9 +36,11 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.*;
 import java.util.Dictionary;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 
 import static org.onlab.util.Tools.get;
 
@@ -71,6 +74,12 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected EdgePortService edgePortService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected HostService hostService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected TopologyService topologyService;
 
     //---------------------------------------------//
 
@@ -147,18 +156,248 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             if(ethPacket == null) return;
 
             //entry port from source device
-            ConnectPoint srcPort = packet.receivedFrom();
+            ConnectPoint srcConnectionPoint = packet.receivedFrom();
 
             switch (EthType.EtherType.lookup(ethPacket.getEtherType())){
                 case LLDP:
                     return;
                 case ARP:
+                    log.info("ARP Packet Received");
+                    //Ethernet Payload can be an ARP or IP packet
+                    ARP arpPacket = (ARP) ethPacket.getPayload();
+                    //Obtain Ip address of the target if it is an ARP REQUEST packet
+                    Ip4Address targetIpAddress = Ip4Address.valueOf(arpPacket.getTargetProtocolAddress());
+
+                    if(arpPacket.getOpCode() == ARP.OP_REQUEST){
+
+                        //Destination device connection port
+                        ConnectPoint dstConnectionPoint;
+                        //Mac address of destination host
+                        MacAddress dstMac = null;
+                        //Get host from target ip address at ARP REQUEST packet
+                        Set<Host> hosts = hostService.getHostsByIp(targetIpAddress);
+                        //If hosts found on the network, send it the ARP REQUEST packet
+                        if(hosts != null){
+                            for (Host host : hosts){
+                                if(host.mac() != null){
+                                    dstMac = host.mac();        //mac address of the host
+                                    dstConnectionPoint = host.location();  //where is connected the host
+
+                                    //Set up treatment: build it with output port on destination point
+                                    TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
+                                            .setOutput(dstConnectionPoint.port());
+
+                                    //Set packet service: new OutBound packet, with destination point, treatment
+                                    // and the received packet
+                                    packetService.emit(new DefaultOutboundPacket(
+                                            dstConnectionPoint.deviceId(),
+                                            treatment.build(),
+                                            context.inPacket().unparsed()));
+                                    break;
+
+                                }
+                            }
+                        }
+
+                        //If no hosts found: dstMac will be null -> destination hosts could be inactive
+                        if(dstMac == null){
+                            //TODO
+                        }
+
+
+
+                    }else{
+                        if(arpPacket.getOpCode() == ARP.OP_REPLY){
+                            //An ARP REQUEST has been received previously,
+                            // so destination host of ARP REPLY (source of REQUEST) is active
+                            //Forward the ARP REPLY to it
+                            //TODO
+                        }
+                    }
 
                     break;
                 case IPV4:
+                    //Get ethernet payload which is ipv4
+                    IPv4 ipHeader = (IPv4) ethPacket.getPayload();
+
+                    //In case of error:
+                    if(ipHeader == null) return;
+
+                    //Get destination host ipv4 address
+                    Ip4Address srcIpAddress = Ip4Address.valueOf(ipHeader.getSourceAddress());
+                    Ip4Address dstIpAddress = Ip4Address.valueOf(ipHeader.getDestinationAddress());
+                    int srcIpPort = 0;
+                    int dstIpPort = 0;
+
+
+                    //TCP or UDP
+                    byte protocol = ipHeader.getProtocol();
+                    if(protocol == IPv4.PROTOCOL_TCP){
+                        TCP tcpHeader = (TCP) ipHeader.getPayload();
+                        srcIpPort = tcpHeader.getSourcePort();
+                        dstIpPort = tcpHeader.getDestinationPort();
+
+                    }else if(protocol == IPv4.PROTOCOL_UDP){
+                        UDP udpHeader = (UDP) ipHeader.getPayload();
+                        srcIpPort = udpHeader.getSourcePort();
+                        dstIpPort = udpHeader.getDestinationPort();
+
+
+                    }
+
+                    //Locate destination host and set a path:
+                    for(Host host : hostService.getHostsByIp(dstIpAddress)){
+                        //if host up and found
+                        setPath(context, host, protocol, ethPacket.getSourceMAC(), srcIpAddress, srcIpPort,
+                                                            host.mac(), dstIpAddress, dstIpPort);
+                        //Packet to table: send packet to network device which came from. Will be redirected using the installed flowrule.
+                        packetToTable(context);
+                    }
+
+
+
                     break;
             }
 
+        }
+
+        //Set a new path on network device from packet source to destination
+        private void setPath(PacketContext context, Host dstHost, byte protocol, MacAddress srcMac, Ip4Address srcIp, int srcIpPort, MacAddress dstMac, Ip4Address dstIp, int dstIpPort) {
+
+            //Source and destination devices and ports
+            DeviceId InputDeviceId = context.inPacket().receivedFrom().deviceId();
+            PortNumber InputDevicePort = context.inPacket().receivedFrom().port();
+            DeviceId OutputDeviceId = dstHost.location().deviceId();
+            PortNumber OutputDevicePort = dstHost.location().port();
+
+            //Source and destination hosts are under same network device
+            if(InputDeviceId == OutputDeviceId){
+                //Source and destination hosts are on different network device ports
+                if(!InputDevicePort.equals(OutputDevicePort)){
+                    //Install flowrule setting route on same device:
+                    installPathFlowRule(dstHost.location(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
+                    //Reverse path
+                    installPathFlowRule(context.inPacket().receivedFrom(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+                }
+                return;
+            }
+            //Source and destination hosts are under different network devices
+
+            Set<Path> paths = topologyService.getPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId);
+            Set<Path> reversePaths = topologyService.getPaths(topologyService.currentTopology(), OutputDeviceId, InputDeviceId);
+
+            Path path = selectPaths(paths, InputDevicePort);
+            Path reversePath = selectPaths(reversePaths, OutputDevicePort);
+            if(path != null && reversePath != null){
+
+                //Install flowrules on each network device involved on the path. Installing for both initial and reverse paths.
+                path.links().forEach(l -> {
+                    installPathFlowRule(l.dst(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
+                });
+                //Install flowrule on last device (redirect to host)
+                installPathFlowRule(dstHost.location(), OutputDevicePort, dstMac, protocol, srcIp, srcIpPort, dstIp, dstIpPort);
+
+                reversePath.links().forEach(l -> {
+                    installPathFlowRule(l.dst(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+                });
+                //Install flowrule on last device of reverse path
+                installPathFlowRule(context.inPacket().receivedFrom(), InputDevicePort, dstMac, protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+            }
+            else{
+
+                //bad things
+            }
+
+
+        }
+
+        //Select a path which first jump does not match with input port (possible cicle)
+        private Path selectPaths(Set<Path> paths, PortNumber inputDevicePort) {
+            Path auxPath = null;
+            for(Path p : paths){
+                auxPath = p;
+                if(!p.src().port().equals(inputDevicePort)) return p;
+
+            }
+
+            //Not the best practice -> might do try-catch exception?
+            return auxPath;
+        }
+
+        //Install path flowrule
+
+        private void installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
+
+
+            //Matching rule
+            TrafficSelector.Builder selector = DefaultTrafficSelector.builder().
+                    matchEthType(Ethernet.TYPE_IPV4).
+                    matchIPSrc(srcIp.toIpPrefix()).
+                    matchIPDst(dstIp.toIpPrefix()).
+                    matchIPProtocol(protocol);
+            if(protocol == IPv4.PROTOCOL_TCP){
+                selector.matchTcpSrc(TpPort.tpPort(srcIpPort)).
+                        matchTcpDst(TpPort.tpPort(dstIpPort));
+            }else if(protocol == IPv4.PROTOCOL_UDP){
+                selector.matchUdpSrc(TpPort.tpPort(srcIpPort)).
+                        matchUdpDst(TpPort.tpPort(dstIpPort));
+            }
+
+            //Treatment rule
+            TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder().setOutput(dstConnectionPoint.port());
+
+            //FlowRule
+            FlowRule.Builder flowrule = DefaultFlowRule.builder().
+                    withSelector(selector.build()).
+                    withTreatment(treatment.build()).
+                    fromApp(appId).
+                    forDevice(dstConnectionPoint.deviceId()).
+                    withPriority(400000).
+                    makeTemporary(10);
+
+            //Apply rule
+            flowRuleService.applyFlowRules(flowrule.build());
+
+
+        }
+        //Install path flowrule for specific device output port and destination mac.
+        private void installPathFlowRule(ConnectPoint dstConnectionPoint, PortNumber outputPort, MacAddress dstMac, byte protocol, Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
+
+
+            //Matching rule
+            TrafficSelector.Builder selector = DefaultTrafficSelector.builder().
+                    matchEthType(Ethernet.TYPE_IPV4).
+                    matchIPSrc(srcIp.toIpPrefix()).
+                    matchIPDst(dstIp.toIpPrefix()).
+                    matchIPProtocol(protocol);
+            if(protocol == IPv4.PROTOCOL_TCP){
+                selector.matchTcpSrc(TpPort.tpPort(srcIpPort)).
+                        matchTcpDst(TpPort.tpPort(dstIpPort));
+            }else if(protocol == IPv4.PROTOCOL_UDP){
+                selector.matchUdpSrc(TpPort.tpPort(srcIpPort)).
+                        matchUdpDst(TpPort.tpPort(dstIpPort));
+            }
+
+            //Treatment rule
+            TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder().setOutput(outputPort).setEthDst(dstMac);
+
+            //FlowRule
+            FlowRule.Builder flowrule = DefaultFlowRule.builder().
+                    withSelector(selector.build()).
+                    withTreatment(treatment.build()).
+                    fromApp(appId).
+                    forDevice(dstConnectionPoint.deviceId()).
+                    withPriority(400000).
+                    makeTemporary(10);
+
+            //Apply rule
+            flowRuleService.applyFlowRules(flowrule.build());
+
+
+        }
+
+        //Send the packet to the table which came from. The new flowrule should take care of it.
+        private void packetToTable(PacketContext context) {
         }
     }
 

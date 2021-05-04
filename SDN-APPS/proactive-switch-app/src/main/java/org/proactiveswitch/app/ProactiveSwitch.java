@@ -57,7 +57,8 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     /** Some configurable property. */
-    private String someProperty;
+    /**private String someProperty;*/
+
 
     //---RELEVANT AND NECESSARY SERVICES FOR APP---//
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
@@ -131,19 +132,21 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
     @Modified
     public void modified(ComponentContext context) {
+        /**
         Dictionary<?, ?> properties = context != null ? context.getProperties() : new Properties();
         if (context != null) {
             someProperty = get(properties, "someProperty");
         }
+         */
         log.info("Reconfigured");
     }
 
 
 
-    @Override
-    public void someMethod() {
+    //@Override
+    /*public void someMethod() {
         log.info("Invoked");
-    }
+    }*/
 
 
     private class ProactiveSwitchProcessor implements PacketProcessor{
@@ -156,7 +159,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             if(ethPacket == null) return;
 
             //entry port from source device
-            ConnectPoint srcConnectionPoint = packet.receivedFrom();
+            ///ConnectPoint srcConnectionPoint = packet.receivedFrom();
 
             switch (EthType.EtherType.lookup(ethPacket.getEtherType())){
                 case LLDP:
@@ -170,17 +173,18 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
                     if(arpPacket.getOpCode() == ARP.OP_REQUEST){
 
-                        //Destination device connection port
+                        //Destination device connection pointt
                         ConnectPoint dstConnectionPoint;
                         //Mac address of destination host
-                        MacAddress dstMac = null;
+                        ///MacAddress dstMac = null;
+
                         //Get host from target ip address at ARP REQUEST packet
                         Set<Host> hosts = hostService.getHostsByIp(targetIpAddress);
                         //If hosts found on the network, send it the ARP REQUEST packet
-                        if(hosts != null){
+                        if(!hosts.isEmpty()){
                             for (Host host : hosts){
-                                if(host.mac() != null){
-                                    dstMac = host.mac();        //mac address of the host
+                                if(host.mac() != null){ //ARP Request done over broadcast (FF:FF:FF:FF), nothing else to compare
+                                    ///dstMac = host.mac();        //mac address of the host
                                     dstConnectionPoint = host.location();  //where is connected the host
 
                                     //Set up treatment: build it with output port on destination point
@@ -194,24 +198,48 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                                             treatment.build(),
                                             context.inPacket().unparsed()));
                                     break;
-
                                 }
                             }
                         }
 
                         //If no hosts found: dstMac will be null -> destination hosts could be inactive
-                        if(dstMac == null){
-                            //TODO
-                        }
-
-
+                        return;
 
                     }else{
                         if(arpPacket.getOpCode() == ARP.OP_REPLY){
                             //An ARP REQUEST has been received previously,
-                            // so destination host of ARP REPLY (source of REQUEST) is active
-                            //Forward the ARP REPLY to it
-                            //TODO
+                            // so destination host of ARP REPLY (source of REQUEST) must be active
+
+                            //Destination device connection point
+                            ConnectPoint dstConnectionPoint;
+                            //Mac address of destination host
+                            ///MacAddress dstMAC = null;
+
+                            //Get host from target ip address at ARP REPLAY packet
+                            Set<Host> hosts = hostService.getHostsByIp(targetIpAddress);
+                            if(!hosts.isEmpty()){
+                                for(Host host : hosts){
+                                    //If target host is found and equals eth packet destination MAC (it should)
+                                    if(host.mac().equals(ethPacket.getDestinationMAC())){
+                                         ///dstMAC = host.mac();
+                                         dstConnectionPoint = host.location();
+
+                                        //Set up treatment: build it with output por on destination point
+                                        TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
+                                                .setOutput(dstConnectionPoint.port());
+
+                                        //Set packet service
+                                        packetService.emit(new DefaultOutboundPacket(
+                                                dstConnectionPoint.deviceId(),
+                                                treatment.build(),
+                                                context.inPacket().unparsed()));
+                                        break;
+                                    }
+                                }
+                            }
+
+                            //If no hosts found, source of initial ARP REQUEST could be down
+                            return;
                         }
                     }
 
@@ -247,9 +275,15 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
                     //Locate destination host and set a path:
                     for(Host host : hostService.getHostsByIp(dstIpAddress)){
-                        //if host up and found
-                        setPath(context, host, protocol, ethPacket.getSourceMAC(), srcIpAddress, srcIpPort,
-                                                            host.mac(), dstIpAddress, dstIpPort);
+                        //if host up and found, set path flowrules on network devices
+
+                        try {
+                            setPath(context, host, protocol, /*ethPacket.getSourceMAC(),*/ srcIpAddress, srcIpPort,
+                                                                host.mac(), dstIpAddress, dstIpPort);
+                        } catch (Exception e) {
+                            System.out.println(e.toString());
+                            e.printStackTrace();
+                        }
                         //Packet to table: send packet to network device which came from. Will be redirected using the installed flowrule.
                         packetToTable(context);
                     }
@@ -257,12 +291,17 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
 
                     break;
+
+                default:
+                    System.out.println("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
+                    return;
             }
 
         }
 
         //Set a new path on network device from packet source to destination
-        private void setPath(PacketContext context, Host dstHost, byte protocol, MacAddress srcMac, Ip4Address srcIp, int srcIpPort, MacAddress dstMac, Ip4Address dstIp, int dstIpPort) {
+        private void setPath(PacketContext context, Host dstHost, byte protocol, /*MacAddress srcMac,*/
+                             Ip4Address srcIp, int srcIpPort, MacAddress dstMac, Ip4Address dstIp, int dstIpPort) throws Exception {
 
             //Source and destination devices and ports
             DeviceId InputDeviceId = context.inPacket().receivedFrom().deviceId();
@@ -271,7 +310,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             PortNumber OutputDevicePort = dstHost.location().port();
 
             //Source and destination hosts are under same network device
-            if(InputDeviceId == OutputDeviceId){
+            if(InputDeviceId.equals(OutputDeviceId)){
                 //Source and destination hosts are on different network device ports
                 if(!InputDevicePort.equals(OutputDevicePort)){
                     //Install flowrule setting route on same device:
@@ -281,8 +320,8 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                 }
                 return;
             }
-            //Source and destination hosts are under different network devices
 
+            //Source and destination hosts are under different network devices
             Set<Path> paths = topologyService.getPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId);
             Set<Path> reversePaths = topologyService.getPaths(topologyService.currentTopology(), OutputDeviceId, InputDeviceId);
 
@@ -306,6 +345,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             else{
 
                 //bad things
+                throw new Exception("Not found paths for hosts: "+srcIp.toString()+" - "+dstIp.toString());
             }
 
 
@@ -324,9 +364,12 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             return auxPath;
         }
 
-        //Install path flowrule
 
-        private void installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
+
+
+        //Install path flowrule -> return id of flowrule installed?
+        private long installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort,
+                                         Ip4Address dstIp, int dstIpPort) {
 
 
             //Matching rule
@@ -355,13 +398,18 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withPriority(400000).
                     makeTemporary(10);
 
-            //Apply rule
+            //TODO
+            //Apply rule - test this:
+            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
-
-
+            return flowrule.build().id().id();
         }
-        //Install path flowrule for specific device output port and destination mac.
-        private void installPathFlowRule(ConnectPoint dstConnectionPoint, PortNumber outputPort, MacAddress dstMac, byte protocol, Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
+
+
+        //Install path flowrule for specific device output port and destination mac. -> return id of flowrule installed?
+        private long installPathFlowRule(ConnectPoint dstConnectionPoint, PortNumber outputPort, MacAddress dstMac, byte protocol,
+                                         Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
 
 
             //Matching rule
@@ -390,14 +438,21 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withPriority(400000).
                     makeTemporary(10);
 
-            //Apply rule
+            //TODO
+            //Apply rule - test this:
+            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
-
-
+            return flowrule.build().id().id();
         }
 
         //Send the packet to the table which came from. The new flowrule should take care of it.
         private void packetToTable(PacketContext context) {
+            log.info("Forwarding to Table");
+            //Wait for flowrule to be installed
+            try { Thread.sleep(100); } catch (InterruptedException ignored) { }
+            context.treatmentBuilder().setOutput(PortNumber.TABLE);
+            context.send();
         }
     }
 

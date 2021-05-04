@@ -281,7 +281,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                             setPath(context, host, protocol, /*ethPacket.getSourceMAC(),*/ srcIpAddress, srcIpPort,
                                                                 host.mac(), dstIpAddress, dstIpPort);
                         } catch (Exception e) {
-                            System.out.println(e.toString());
+                            log.info(e.toString());
                             e.printStackTrace();
                         }
                         //Packet to table: send packet to network device which came from. Will be redirected using the installed flowrule.
@@ -293,7 +293,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     break;
 
                 default:
-                    System.out.println("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
+                    log.info("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
                     return;
             }
 
@@ -400,8 +400,8 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
             //TODO
             //Apply rule - test this:
-            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
-            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
             return flowrule.build().id().id();
         }
@@ -440,8 +440,8 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
             //TODO
             //Apply rule - test this:
-            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
-            System.out.println("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
             return flowrule.build().id().id();
         }

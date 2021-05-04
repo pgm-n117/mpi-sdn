@@ -15,7 +15,6 @@
  */
 package org.proactiveswitch.app;
 
-import javafx.application.HostServices;
 import org.onlab.packet.*;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
@@ -48,10 +47,10 @@ import static org.onlab.util.Tools.get;
  * Skeletal ONOS application component.
  */
 @Component(immediate = true,
-           service = {ProactiveSwitchInterface.class},
+           service = {ProactiveSwitchInterface.class}/*,
            property = {
-               "someProperty=Some Default String Value",
-           })
+               "someProperty=Some Default String Value"}*/
+           )
 public class ProactiveSwitch implements ProactiveSwitchInterface {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
@@ -138,15 +137,16 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             someProperty = get(properties, "someProperty");
         }
          */
+
         log.info("Reconfigured");
     }
 
 
 
     //@Override
-    /*public void someMethod() {
+    public void someMethod() {
         log.info("Invoked");
-    }*/
+    }
 
 
     private class ProactiveSwitchProcessor implements PacketProcessor{

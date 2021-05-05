@@ -32,8 +32,8 @@
     <url>http://onosproject.org</url>
 
     <properties>
-        <onos.app.name>org.foo.app</onos.app.name>
-        <onos.app.title>Foo App</onos.app.title>
+        <onos.app.name>org.proactiveswitch.app</onos.app.name>
+        <onos.app.title>Proactive Switch Application</onos.app.title>
         <onos.app.origin>Foo, Inc.</onos.app.origin>
         <onos.app.category>default</onos.app.category>
         <onos.app.url>http://onosproject.org</onos.app.url>

@@ -35,13 +35,8 @@ import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.*;
-import java.util.Dictionary;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
-
-import static org.onlab.util.Tools.get;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Skeletal ONOS application component.
@@ -144,10 +139,9 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
 
     //@Override
-    public void someMethod() {
+    /*public void someMethod() {
         log.info("Invoked");
-    }
-
+    }*/
 
     private class ProactiveSwitchProcessor implements PacketProcessor{
 
@@ -278,7 +272,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                         //if host up and found, set path flowrules on network devices
 
                         try {
-                            setPath(context, host, protocol, /*ethPacket.getSourceMAC(),*/ srcIpAddress, srcIpPort,
+                            setPath(context, host, protocol, srcIpAddress, srcIpPort,
                                                                 host.mac(), dstIpAddress, dstIpPort);
                         } catch (Exception e) {
                             log.info(e.toString());
@@ -303,6 +297,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
         private void setPath(PacketContext context, Host dstHost, byte protocol, /*MacAddress srcMac,*/
                              Ip4Address srcIp, int srcIpPort, MacAddress dstMac, Ip4Address dstIp, int dstIpPort) throws Exception {
 
+
             //Source and destination devices and ports
             DeviceId InputDeviceId = context.inPacket().receivedFrom().deviceId();
             PortNumber InputDevicePort = context.inPacket().receivedFrom().port();
@@ -311,16 +306,18 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
             //Source and destination hosts are under same network device
             if(InputDeviceId.equals(OutputDeviceId)){
+                log.info("      SOURCE AND DESTINATION UNDER SAME NETWORK DEVICE");
                 //Source and destination hosts are on different network device ports
                 if(!InputDevicePort.equals(OutputDevicePort)){
                     //Install flowrule setting route on same device:
                     installPathFlowRule(dstHost.location(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
                     //Reverse path
                     installPathFlowRule(context.inPacket().receivedFrom(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+
                 }
                 return;
             }
-
+            log.info("      SOURCE AND DESTINATION ON DIFFERENT NETWORK DEVICES");
             //Source and destination hosts are under different network devices
             Set<Path> paths = topologyService.getPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId);
             Set<Path> reversePaths = topologyService.getPaths(topologyService.currentTopology(), OutputDeviceId, InputDeviceId);
@@ -328,19 +325,24 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             Path path = selectPaths(paths, InputDevicePort);
             Path reversePath = selectPaths(reversePaths, OutputDevicePort);
             if(path != null && reversePath != null){
-
+                log.info("FOUND PATHS FOR HOSTS: "+srcIp.toString()+" - "+dstIp.toString());
+                log.info(path.toString());
+                log.info(reversePath.toString());
                 //Install flowrules on each network device involved on the path. Installing for both initial and reverse paths.
+
                 path.links().forEach(l -> {
-                    installPathFlowRule(l.dst(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
+                    installPathFlowRule(l.src(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
                 });
                 //Install flowrule on last device (redirect to host)
                 installPathFlowRule(dstHost.location(), OutputDevicePort, dstMac, protocol, srcIp, srcIpPort, dstIp, dstIpPort);
 
                 reversePath.links().forEach(l -> {
-                    installPathFlowRule(l.dst(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+                    installPathFlowRule(l.src(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
                 });
                 //Install flowrule on last device of reverse path
                 installPathFlowRule(context.inPacket().receivedFrom(), InputDevicePort, dstMac, protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+
+                return;
             }
             else{
 
@@ -368,7 +370,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
 
         //Install path flowrule -> return id of flowrule installed?
-        private long installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort,
+        private void installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort,
                                          Ip4Address dstIp, int dstIpPort) {
 
 
@@ -395,21 +397,21 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withTreatment(treatment.build()).
                     fromApp(appId).
                     forDevice(dstConnectionPoint.deviceId()).
-                    withPriority(400000).
+                    withPriority(40000).
                     makeTemporary(10);
 
             //TODO
             //Apply rule - test this:
-            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
-            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
-            return flowrule.build().id().id();
+            return;
         }
 
 
         //Install path flowrule for specific device output port and destination mac. -> return id of flowrule installed?
-        private long installPathFlowRule(ConnectPoint dstConnectionPoint, PortNumber outputPort, MacAddress dstMac, byte protocol,
-                                         Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
+        private void installPathFlowRule(ConnectPoint dstConnectionPoint, PortNumber outputPort, MacAddress dstMac, byte protocol,
+                                                      Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
 
 
             //Matching rule
@@ -435,21 +437,21 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withTreatment(treatment.build()).
                     fromApp(appId).
                     forDevice(dstConnectionPoint.deviceId()).
-                    withPriority(400000).
+                    withPriority(40000).
                     makeTemporary(10);
 
             //TODO
             //Apply rule - test this:
-            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
-            log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
+            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
-            return flowrule.build().id().id();
+            return;
         }
 
         //Send the packet to the table which came from. The new flowrule should take care of it.
+        //TODO -> pass flowrule id to check if it is installed
         private void packetToTable(PacketContext context) {
-            log.info("Forwarding to Table");
-            //Wait for flowrule to be installed
+            //Wait for flowrule to activate
             try { Thread.sleep(100); } catch (InterruptedException ignored) { }
             context.treatmentBuilder().setOutput(PortNumber.TABLE);
             context.send();

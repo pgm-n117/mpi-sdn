@@ -38,20 +38,21 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+
 /**
  * Skeletal ONOS application component.
  */
 @Component(immediate = true,
-           service = {ProactiveSwitchInterface.class}/*,
+           service = {ProactiveSwitchInterface.class},
            property = {
-               "someProperty=Some Default String Value"}*/
+               "someProperty=Some Default String Value"}
            )
 public class ProactiveSwitch implements ProactiveSwitchInterface {
-
+    
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     /** Some configurable property. */
-    /**private String someProperty;*/
+    private String someProperty;
 
 
     //---RELEVANT AND NECESSARY SERVICES FOR APP---//
@@ -86,25 +87,33 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
     @Activate
     protected void activate() {
-        cfgService.registerProperties(getClass());
-        log.info("Started");
 
-        //Obtain app id
-        appId = coreService.getAppId("org.proactiveswitch.app");
+        try{
+            log.info("PROACTIVE-SWITCH -- ACTIVATING");
 
-        //Procesador de paquetes
-        proactiveSwitchProcessor = new ProactiveSwitchProcessor();
-        packetService.addProcessor(proactiveSwitchProcessor, PacketProcessor.director(3));
+            cfgService.registerProperties(getClass());
+            log.info("Started");
 
-        //Request Packets - obtain first packages at the beginning.
-        //Packets can be obtained from edge devices only, as only them will have hosts connected
-        edgePortService.getEdgePoints().forEach(connectPoint -> {
-            log.info("EDGE DEVICE: "+ connectPoint.deviceId());
-            //ARP
-            packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
-            //IPV4
-            packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
-        });
+            //Obtain app id
+            appId = coreService.getAppId("org.proactiveswitch.app");
+
+            //Procesador de paquetes
+            proactiveSwitchProcessor = new ProactiveSwitchProcessor();
+            packetService.addProcessor(proactiveSwitchProcessor, PacketProcessor.director(3));
+
+            //Request Packets - obtain first packages at the beginning.
+            //Packets can be obtained from edge devices only, as only them will have hosts connected
+            edgePortService.getEdgePoints().forEach(connectPoint -> {
+                log.info("EDGE DEVICE: "+ connectPoint.deviceId());
+                //ARP
+                packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+                //IPV4
+                packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+            });
+
+        }catch(Exception ex){
+            log.info("------------ ACTIVATE ERROR ------------" + ex.toString());
+        }
     }
 
     @Deactivate
@@ -159,7 +168,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                 case LLDP:
                     return;
                 case ARP:
-                    log.info("ARP Packet Received");
+                    //log.info("ARP Packet Received");
                     //Ethernet Payload can be an ARP or IP packet
                     ARP arpPacket = (ARP) ethPacket.getPayload();
                     //Obtain Ip address of the target if it is an ARP REQUEST packet
@@ -263,8 +272,6 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                         UDP udpHeader = (UDP) ipHeader.getPayload();
                         srcIpPort = udpHeader.getSourcePort();
                         dstIpPort = udpHeader.getDestinationPort();
-
-
                     }
 
                     //Locate destination host and set a path:
@@ -275,7 +282,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                             setPath(context, host, protocol, srcIpAddress, srcIpPort,
                                                                 host.mac(), dstIpAddress, dstIpPort);
                         } catch (Exception e) {
-                            log.info(e.toString());
+                            log.error(e.toString());
                             e.printStackTrace();
                         }
                         //Packet to table: send packet to network device which came from. Will be redirected using the installed flowrule.
@@ -362,11 +369,8 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
             }
 
-            //Not the best practice -> might do try-catch exception?
             return auxPath;
         }
-
-
 
 
         //Install path flowrule -> return id of flowrule installed?
@@ -400,10 +404,8 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withPriority(40000).
                     makeTemporary(10);
 
-            //TODO
+
             //Apply rule - test this:
-            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
-            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
             return;
         }
@@ -440,16 +442,14 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withPriority(40000).
                     makeTemporary(10);
 
-            //TODO
+
             //Apply rule - test this:
-            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
-            //log.info("INSTALLED FLOWRULE ID:"+flowrule.build().id());
             flowRuleService.applyFlowRules(flowrule.build());
             return;
         }
 
         //Send the packet to the table which came from. The new flowrule should take care of it.
-        //TODO -> pass flowrule id to check if it is installed
+
         private void packetToTable(PacketContext context) {
             //Wait for flowrule to activate
             try { Thread.sleep(100); } catch (InterruptedException ignored) { }

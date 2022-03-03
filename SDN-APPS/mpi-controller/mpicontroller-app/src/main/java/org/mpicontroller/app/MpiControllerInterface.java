@@ -15,8 +15,8 @@
  */
 package org.mpicontroller.app;
 
-public interface SomeInterface {
+public interface MpiControllerInterface {
 
-    void someMethod();
+    //void someMethod();
 
 }

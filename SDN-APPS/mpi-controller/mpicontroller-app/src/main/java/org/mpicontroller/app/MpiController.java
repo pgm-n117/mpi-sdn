@@ -44,6 +44,7 @@ import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -63,6 +64,7 @@ public class MpiController implements MpiControllerInterface{
 
     /** Some configurable property. */
     private String someProperty;
+
 
 
     //---RELEVANT AND NECESSARY SERVICES FOR APP---//
@@ -116,9 +118,21 @@ public class MpiController implements MpiControllerInterface{
             edgePortService.getEdgePoints().forEach(connectPoint -> {
                 log.info("EDGE DEVICE: "+ connectPoint.deviceId());
                 //ARP -> los arp aqui me dan igual? de esto se encarga el otro controlador
-                //packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+                packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
                 //IPV4
                 packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+
+
+                //IPV4 UDP MPI Packets, included in previous rule
+                //Matching rule
+                /*TrafficSelector.Builder MPI_UDP_SELECTOR = DefaultTrafficSelector.builder().
+                 *       matchEthType(Ethernet.TYPE_IPV4).
+                 *       matchIPDst(Ip4Address.valueOf("10.0.0.1").toIpPrefix()).
+                 *       matchIPProtocol(IPv4.PROTOCOL_UDP).
+                 *       matchUdpDst(TpPort.tpPort(7777));
+                 *
+                 * packetService.requestPackets(MPI_UDP_SELECTOR.build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+                 */
             });
 
         }catch(Exception ex){
@@ -164,6 +178,10 @@ public class MpiController implements MpiControllerInterface{
 
     private class mpiControllerProcessor implements PacketProcessor{
 
+
+        //HashMap Structure: <Ip Address of endpoint, <TCP Port of process, Topology/Device/Swtich Port Number>>
+        private HashMap<Ip4Address, HashMap<java.lang.Integer, PortNumber>> MPI_Endpoints = new HashMap<Ip4Address, HashMap<java.lang.Integer, PortNumber>>();
+
         @Override
         public void process(PacketContext context) {
 
@@ -177,7 +195,7 @@ public class MpiController implements MpiControllerInterface{
             switch (EthType.EtherType.lookup(ethPacket.getEtherType())){
                 case LLDP:
                     return;
-                /*case ARP:
+                case ARP:
                     //log.info("ARP Packet Received");
                     //Ethernet Payload can be an ARP or IP packet
                     ARP arpPacket = (ARP) ethPacket.getPayload();
@@ -186,7 +204,7 @@ public class MpiController implements MpiControllerInterface{
 
                     if(arpPacket.getOpCode() == ARP.OP_REQUEST){
 
-                        //Destination device connection pointt
+                        //Destination device connection point
                         ConnectPoint dstConnectionPoint;
                         //Mac address of destination host
                         ///MacAddress dstMac = null;
@@ -257,7 +275,7 @@ public class MpiController implements MpiControllerInterface{
                     }
 
                     break;
-                */
+
 
                 case IPV4:
                     //Get ethernet payload which is ipv4
@@ -286,21 +304,46 @@ public class MpiController implements MpiControllerInterface{
                     //UDP TRATMENT
                     else if(protocol == IPv4.PROTOCOL_UDP){
                         UDP udpHeader = (UDP) ipHeader.getPayload();
+
                         srcIpPort = udpHeader.getSourcePort();
                         dstIpPort = udpHeader.getDestinationPort();
 
+                        //log.info("UDP PACKET CAPTURED " + srcIpAddress + "->" + dstIpAddress);
+
                         //TEST IF WE CAN GET UPD MESSAGE PAYLOAD!!!
-                        if(dstIpAddress.equals(Ip4Address.valueOf("192.168.1.1"))){ //ip address of controller or special ip to identify
-                            log.info("      UDP PACKET DESTINATION ADDRESS: "+dstIpAddress.toString()+":"+dstIpPort);
+                        if(dstIpAddress.equals(Ip4Address.valueOf("10.0.0.1"))){ //ip address of controller or special ip to identify
+                            log.info("      MPI UDP PACKET DESTINATION ADDRESS: "+dstIpAddress.toString()+":"+dstIpPort);
                             //log.info("      PEER INFO: "+(udpHeader.getPayload()));
                             byte[] rawMessage = ((byte[]) udpHeader.getPayload().serialize());
 
                             ByteBuffer message = wrap(rawMessage);
-                            message.order(ByteOrder.BIG_ENDIAN);
-                            short peerPort = message.getShort();
-                            IpAddress peerIpAddress = IpAddress.valueOf( (int)(message.getLong()>>32 & 0xFFFFFFFF) );
+                            message.order(ByteOrder.LITTLE_ENDIAN);
+                            IntBuffer  buffer = message.asIntBuffer();
+                            int[] PeerAddr = new int[2];
+                            buffer.get(PeerAddr);
 
-                            log.info("      PEER INFO: "+peerIpAddress+":"+peerPort);
+                            //short peerPort = message.getShort();
+                            //IpAddress peerIpAddress = IpAddress.valueOf( (int)(message.getLong()>>32 & 0xFFFFFFFF) );
+
+                            //log.info("      PEER INFO: "+peerIpAddress+":"+peerPort);
+                            int peerPort = PeerAddr[1]<<8;
+                            try{
+                                ByteBuffer aux_b = message;
+                                log.info("      ENDPOINT ADDR INFO: "+ IpAddress.valueOf(PeerAddr[0]) + ":" + peerPort);
+                            }catch(Exception ex){
+                                log.error(ex.toString());
+                            }
+
+                            /*try{
+                                ByteBuffer aux_a = message;
+                                log.info("      ENDPOINT PORT INFO: "+endpointAddr[1]);
+                            }catch(Exception ex){
+                                log.error(ex.toString());
+                            }*/
+
+
+
+
                         }
                         //log.info();
 
@@ -496,6 +539,23 @@ public class MpiController implements MpiControllerInterface{
             context.treatmentBuilder().setOutput(PortNumber.TABLE);
             context.send();
         }
+
+
+
+        //TODO
+        private void newMPIEndpoint(int[] peerAddr){
+
+        }
+
+
+        //TODO
+        private void removeMPIEndpoint(){
+
+        }
+
+
+
+
     }
 
 }

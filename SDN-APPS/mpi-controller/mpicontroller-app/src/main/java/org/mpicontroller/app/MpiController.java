@@ -45,6 +45,7 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -89,6 +90,9 @@ public class MpiController implements MpiControllerInterface{
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected TopologyService topologyService;
 
+
+
+
     //---------------------------------------------//
 
     //Needed variables
@@ -96,6 +100,17 @@ public class MpiController implements MpiControllerInterface{
 
     //Packet processor
     private PacketProcessor mpiControllerProcessor;
+
+    private final FlowRuleListener flowRuleListener = new flowRuleEventListener(); //Class at end of file
+
+    private HashMap<IpAddress, Map<Integer, Boolean>> MPIEndpoints = new HashMap<IpAddress, Map<Integer, Boolean>>();
+    private HashMap<Integer, List<Integer>> ActiveFlowrules = new HashMap<>(); //Active flowrules (id) and a list with the links (ids) that take part of a path
+    private HashMap<Integer, Integer> ActiveLinks = new HashMap<>(); //Links and their usage by active paths (times used by a flowrule) -> for load balancing
+
+
+
+
+
 
     @Activate
     protected void activate() {
@@ -135,6 +150,8 @@ public class MpiController implements MpiControllerInterface{
                  */
             });
 
+            flowRuleService.addListener(flowRuleListener);
+
         }catch(Exception ex){
             log.info("------------ERROR EN ACTIVATE------------" + ex.toString());
         }
@@ -148,12 +165,14 @@ public class MpiController implements MpiControllerInterface{
         //Remove everything initialized on activate
         edgePortService.getEdgePoints().forEach(connectPoint -> {
             //ARP
-            //packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+            packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
             //IPV4
             packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
         });
 
         flowRuleService.removeFlowRulesById(appId);
+        flowRuleService.removeListener(flowRuleListener);
+
         packetService.removeProcessor(mpiControllerProcessor);
     }
 
@@ -301,7 +320,7 @@ public class MpiController implements MpiControllerInterface{
                         dstIpPort = tcpHeader.getDestinationPort();
                     }
 
-                    //UDP TRATMENT
+                    //UDP TREATMENT
                     else if(protocol == IPv4.PROTOCOL_UDP){
                         UDP udpHeader = (UDP) ipHeader.getPayload();
 
@@ -318,18 +337,20 @@ public class MpiController implements MpiControllerInterface{
 
                             ByteBuffer message = wrap(rawMessage);
                             message.order(ByteOrder.LITTLE_ENDIAN);
-                            IntBuffer  buffer = message.asIntBuffer();
+                            IntBuffer buffer = message.asIntBuffer();
                             int[] PeerAddr = new int[2];
                             buffer.get(PeerAddr);
+                            //Ver lo que contiene el buffer
 
                             //short peerPort = message.getShort();
                             //IpAddress peerIpAddress = IpAddress.valueOf( (int)(message.getLong()>>32 & 0xFFFFFFFF) );
 
                             //log.info("      PEER INFO: "+peerIpAddress+":"+peerPort);
-                            int peerPort = PeerAddr[1]<<8;
+                            //int peerPort = PeerAddr[1]<<8;
+
                             try{
                                 ByteBuffer aux_b = message;
-                                log.info("      ENDPOINT ADDR INFO: "+ IpAddress.valueOf(PeerAddr[0]) + ":" + peerPort);
+                                log.info("      ENDPOINT ADDR INFO: "+ IpAddress.valueOf(PeerAddr[0]) + ":" + Integer.reverseBytes(PeerAddr[1]));
                             }catch(Exception ex){
                                 log.error(ex.toString());
                             }
@@ -367,6 +388,8 @@ public class MpiController implements MpiControllerInterface{
                             log.error(e.toString());
                             e.printStackTrace();
                         }
+
+
                         //Packet to table: send packet to network device which came from. Will be redirected using the installed flowrule.
                         packetToTable(context);
                     }
@@ -540,11 +563,20 @@ public class MpiController implements MpiControllerInterface{
             context.send();
         }
 
+        //TODO  LIMPIAR PATHS CUANDO SE ELIMINAN LAS FLOWRULES, PARA DAR BALANCEO DE CARGA
+        private void cleanPathFlowRule(){
+
+        }
+
 
 
         //TODO
         private void newMPIEndpoint(int[] peerAddr){
-
+            //peerAddr[0] es la dirección IP del endpoint. peerAddr[1] es el puerto del endpoint.
+            /*if(MPIEndpoints.containsKey(peerAddr[0]){
+                //Poner el puerto del switch en el que está el host
+                //Endpoints.get(peerAddr[0]).computeIfAbsent(peerAddr[1], key -> hostService.getHostsByIp(IpAddress.valueOf(peerAddr[0]).getIp4Address()));
+            }*/
         }
 
 
@@ -554,9 +586,32 @@ public class MpiController implements MpiControllerInterface{
         }
 
 
-
-
     }
+
+    private class flowRuleEventListener implements FlowRuleListener{
+
+        @Override
+        public void event(FlowRuleEvent event) {
+            FlowRule flowrule = event.subject(); //Flowrule of event
+
+            if(flowrule.appId() == appId.id()){
+                switch (event.type()){
+                    case RULE_ADDED:
+                        log.info("NEW FLOWRULE ADDED: "+ flowrule.id());
+                        break;
+                    case RULE_REMOVED:
+                        log.info("FLOWRULE REMOVED: "+ flowrule.id());
+                        break;
+
+                    default: break;
+
+                }
+
+            }
+
+        }
+    }
+
 
 }
 

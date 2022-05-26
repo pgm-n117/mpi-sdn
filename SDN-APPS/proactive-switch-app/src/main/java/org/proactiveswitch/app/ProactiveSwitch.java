@@ -105,10 +105,13 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             //Packets can be obtained from edge devices only, as only them will have hosts connected
             edgePortService.getEdgePoints().forEach(connectPoint -> {
                 log.info("EDGE DEVICE: "+ connectPoint.deviceId());
+
                 //ARP
                 packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
                 //IPV4
                 packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+
+
             });
 
         }catch(Exception ex){
@@ -127,6 +130,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
             //IPV4
             packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
+
         });
 
         flowRuleService.removeFlowRulesById(appId);

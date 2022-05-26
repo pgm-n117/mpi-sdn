@@ -47,6 +47,8 @@ import java.nio.ByteOrder;
 import java.nio.IntBuffer;
 import java.nio.LongBuffer;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.nio.ByteBuffer.*;
@@ -103,9 +105,11 @@ public class MpiController implements MpiControllerInterface{
 
     private final FlowRuleListener flowRuleListener = new flowRuleEventListener(); //Class at end of file
 
-    private HashMap<IpAddress, Map<Integer, Boolean>> MPIEndpoints = new HashMap<IpAddress, Map<Integer, Boolean>>();
-    private HashMap<Integer, List<Integer>> ActiveFlowrules = new HashMap<>(); //Active flowrules (id) and a list with the links (ids) that take part of a path
-    private HashMap<Integer, Integer> ActiveLinks = new HashMap<>(); //Links and their usage by active paths (times used by a flowrule) -> for load balancing
+    //HashMap Structure: <Ip Address of endpoint, <TCP Port of process, Topology/Device/Swtich Port Number>>
+    private ConcurrentMap<IpAddress, Map<Integer, PortNumber>> MPIEndpoints = new ConcurrentHashMap<IpAddress, Map<Integer, PortNumber>>();
+
+    private ConcurrentMap<FlowId, Link> ActiveFlowrules = new ConcurrentHashMap<>(); //Active flowrules (id) and the link its using
+    private ConcurrentMap<Link, Integer> ActiveLinks = new ConcurrentHashMap<>(); //Links and their usage by active paths (times used by a flowrule) -> for load balancing
 
 
 
@@ -198,8 +202,7 @@ public class MpiController implements MpiControllerInterface{
     private class mpiControllerProcessor implements PacketProcessor{
 
 
-        //HashMap Structure: <Ip Address of endpoint, <TCP Port of process, Topology/Device/Swtich Port Number>>
-        private HashMap<Ip4Address, HashMap<java.lang.Integer, PortNumber>> MPI_Endpoints = new HashMap<Ip4Address, HashMap<java.lang.Integer, PortNumber>>();
+        //private HashMap<Ip4Address, HashMap<java.lang.Integer, PortNumber>> MPI_Endpoints = new HashMap<Ip4Address, HashMap<java.lang.Integer, PortNumber>>();
 
         @Override
         public void process(PacketContext context) {
@@ -318,6 +321,7 @@ public class MpiController implements MpiControllerInterface{
                         TCP tcpHeader = (TCP) ipHeader.getPayload();
                         srcIpPort = tcpHeader.getSourcePort();
                         dstIpPort = tcpHeader.getDestinationPort();
+
                     }
 
                     //UDP TREATMENT
@@ -327,11 +331,9 @@ public class MpiController implements MpiControllerInterface{
                         srcIpPort = udpHeader.getSourcePort();
                         dstIpPort = udpHeader.getDestinationPort();
 
-                        //log.info("UDP PACKET CAPTURED " + srcIpAddress + "->" + dstIpAddress);
-
-                        //TEST IF WE CAN GET UPD MESSAGE PAYLOAD!!!
-                        if(dstIpAddress.equals(Ip4Address.valueOf("10.0.0.1"))){ //ip address of controller or special ip to identify
-                            log.info("      MPI UDP PACKET DESTINATION ADDRESS: "+dstIpAddress.toString()+":"+dstIpPort);
+                        //IF UDP MESSAGE IS FROM MPI HOST
+                        if(dstIpAddress.equals(Ip4Address.valueOf("10.0.0.1")) & (dstIpPort == 7777)){ //ip address of controller or special ip to identify
+                            //log.info("      MPI UDP PACKET DESTINATION ADDRESS: "+dstIpAddress.toString()+":"+dstIpPort);
                             //log.info("      PEER INFO: "+(udpHeader.getPayload()));
                             byte[] rawMessage = ((byte[]) udpHeader.getPayload().serialize());
 
@@ -342,65 +344,151 @@ public class MpiController implements MpiControllerInterface{
                             buffer.get(PeerAddr);
                             //Ver lo que contiene el buffer
 
-                            //short peerPort = message.getShort();
-                            //IpAddress peerIpAddress = IpAddress.valueOf( (int)(message.getLong()>>32 & 0xFFFFFFFF) );
-
-                            //log.info("      PEER INFO: "+peerIpAddress+":"+peerPort);
-                            //int peerPort = PeerAddr[1]<<8;
+                            int peerPort = PeerAddr[1];
+                            Ip4Address peerIpAddress = Ip4Address.valueOf(PeerAddr[0]);
 
                             try{
-                                ByteBuffer aux_b = message;
-                                log.info("      ENDPOINT ADDR INFO: "+ IpAddress.valueOf(PeerAddr[0]) + ":" + Integer.reverseBytes(PeerAddr[1]));
+                                log.info("      MPI ENDPOINT ADDR INFO: "+ Ip4Address.valueOf(PeerAddr[0]) + ":" + Integer.reverseBytes(PeerAddr[1]));
                             }catch(Exception ex){
                                 log.error(ex.toString());
                             }
 
-                            /*try{
-                                ByteBuffer aux_a = message;
-                                log.info("      ENDPOINT PORT INFO: "+endpointAddr[1]);
-                            }catch(Exception ex){
-                                log.error(ex.toString());
-                            }*/
+                            //Store MPI endpoint
+                            if(MPIEndpoints.containsKey(peerIpAddress)){
+                                //If endpoint is already registered, set new endpoint tcp port of new MPI process
+                                MPIEndpoints.get(peerIpAddress).putIfAbsent(peerPort, context.inPacket().receivedFrom().port());
+                            }else{
+                                ConcurrentHashMap<Integer, PortNumber> MPIPeer = new ConcurrentHashMap<Integer, PortNumber>();
+                                MPIPeer.put(peerPort, context.inPacket().receivedFrom().port());
+
+                                MPIEndpoints.putIfAbsent(peerIpAddress, MPIPeer);
+                            }
 
 
-
-
+                            //Locate destination host and set a path from every other host in topology:
+                            for(Host sourceHost : hostService.getHosts()){
+                                //if host up and found, set path flowrules on network devices
+                                Host dstHost = hostService.getHost(context.inPacket().receivedFrom().hostId());
+                                Ip4Address srcIp;
+                                if(!sourceHost.ipAddresses().isEmpty()){
+                                    for(IpAddress IP : sourceHost.ipAddresses()){
+                                        srcIp = IP.getIp4Address();
+                                        //It should obtain only 1 IP address
+                                        try {
+                                            setMPIPath(context, sourceHost, dstHost, IPv4.PROTOCOL_TCP, srcIp, peerIpAddress, peerPort);
+                                        } catch (Exception e) {
+                                            log.error(e.toString());
+                                            e.printStackTrace();
+                                        }
+                                    }
+                                }
+                            }
+                            //Once paths and flowrules are created, drop UDP notification
+                            context.treatmentBuilder().drop();
+                            break;
                         }
-                        //log.info();
-
-                        //MAKE A DATA STRUCTURE TO SET HOSTS IP AND PORTS, AND LINKS TO EVERY OTHER DESTINATION
-                        /*
-                         *
-                         *
-                         *
-                         */
 
                     }
 
+                    //Actions for common TCP or UDP traffic
                     //Locate destination host and set a path:
                     for(Host host : hostService.getHostsByIp(dstIpAddress)){
                         //if host up and found, set path flowrules on network devices
 
                         try {
                             setPath(context, host, protocol, srcIpAddress, srcIpPort,
-                                                                host.mac(), dstIpAddress, dstIpPort);
+                                    host.mac(), dstIpAddress, dstIpPort);
+                            log.info("*********USED LINKS********* :\n "+ Arrays.asList(ActiveLinks));
                         } catch (Exception e) {
                             log.error(e.toString());
                             e.printStackTrace();
                         }
 
-
                         //Packet to table: send packet to network device which came from. Will be redirected using the installed flowrule.
                         packetToTable(context);
                     }
-
-
 
                     break;
 
                 default:
                     log.info("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
                     return;
+            }
+
+        }
+
+        private void setMPIPath(PacketContext context, Host sourceHost, Host dstHost, byte protocol, Ip4Address srcIp, Ip4Address dstIpAddress, int dstIpPort) {
+
+
+            //Source and destination devices and ports
+            DeviceId InputDeviceId = sourceHost.location().deviceId();
+            PortNumber InputDevicePort = sourceHost.location().port();
+
+            DeviceId OutputDeviceId = context.inPacket().receivedFrom().deviceId();
+            PortNumber OutputDevicePort = context.inPacket().receivedFrom().port();
+
+            //Source and destination hosts are under same network device
+            if(InputDeviceId.equals(OutputDeviceId)){
+                log.info("      SOURCE AND DESTINATION UNDER SAME NETWORK DEVICE");
+                //Source and destination hosts are on different network device ports
+                if(!InputDevicePort.equals(OutputDevicePort)){
+                    //Install flowrule setting route on same device:
+                    installMPIPathFlowRule(dstHost.location(), protocol, srcIp, dstIpAddress, dstIpPort, false);
+                    //Reverse path
+                    installMPIPathFlowRule(context.inPacket().receivedFrom(), protocol, dstIpAddress, srcIp, dstIpPort, true);
+
+                }
+                return;
+            }
+
+            log.info("      SOURCE AND DESTINATION ON DIFFERENT NETWORK DEVICES");
+            //Source and destination hosts are under different network devices
+            Set<Path> paths = topologyService.getPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId);
+            Set<Path> reversePaths = topologyService.getPaths(topologyService.currentTopology(), OutputDeviceId, InputDeviceId);
+
+            //Select possible paths. Used links in paths are anotated in ActiveLinks
+            Path path = selectMPIPaths(paths, InputDevicePort);
+            Path reversePath = selectMPIPaths(reversePaths, OutputDevicePort);
+
+
+
+            if(path != null && reversePath != null){
+                log.info("FOUND PATHS FOR HOSTS: "+srcIp.toString()+" - "+dstIpAddress.toString());
+                log.info(path.toString());
+                log.info(reversePath.toString());
+                //Install flowrules on each network device involved on the path. Installing for both initial and reverse paths.
+
+                path.links().forEach(l -> {
+
+                    FlowId flowruleId = installMPIPathFlowRule(l.src(), protocol, srcIp, dstIpAddress, dstIpPort, false);
+                    if(flowruleId != null){ //If path and flowrule installation success
+                        ActiveLinks.merge(l, 1, Integer::sum);
+                        ActiveFlowrules.putIfAbsent(flowruleId, l);
+                    }
+                });
+                //Install flowrule on last device (redirect to host)
+                installMPIPathFlowRule(dstHost.location(), protocol, srcIp, dstIpAddress, dstIpPort, false);
+
+                reversePath.links().forEach(l -> {
+                    FlowId flowruleId = installMPIPathFlowRule(l.src(), protocol, dstIpAddress, srcIp, dstIpPort, true);
+                    if(flowruleId != null){ //If path and flowrule installation success
+                        ActiveLinks.merge(l, 1, Integer::sum);
+                        ActiveFlowrules.putIfAbsent(flowruleId, l);
+                    }
+                });
+                //Install flowrule on last device of reverse path
+                installMPIPathFlowRule(context.inPacket().receivedFrom(), protocol, dstIpAddress, srcIp, dstIpPort, true);
+
+                return;
+            }
+            else{
+
+                //bad things
+                try {
+                    throw new Exception("Not found paths for hosts: "+srcIp.toString()+" - "+dstIpAddress.toString());
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
 
         }
@@ -434,8 +522,8 @@ public class MpiController implements MpiControllerInterface{
             Set<Path> paths = topologyService.getPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId);
             Set<Path> reversePaths = topologyService.getPaths(topologyService.currentTopology(), OutputDeviceId, InputDeviceId);
 
-            Path path = selectPaths(paths, InputDevicePort);
-            Path reversePath = selectPaths(reversePaths, OutputDevicePort);
+            Path path = selectBalancedPaths(paths, InputDevicePort);
+            Path reversePath = selectBalancedPaths(reversePaths, OutputDevicePort);
 
             if(path != null && reversePath != null){
                 log.info("FOUND PATHS FOR HOSTS: "+srcIp.toString()+" - "+dstIp.toString());
@@ -444,13 +532,18 @@ public class MpiController implements MpiControllerInterface{
                 //Install flowrules on each network device involved on the path. Installing for both initial and reverse paths.
 
                 path.links().forEach(l -> {
-                    installPathFlowRule(l.src(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
+                    FlowId flowruleId = installPathFlowRule(l.src(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
+                    ActiveLinks.merge(l, 1, Integer::sum);
+                    ActiveFlowrules.putIfAbsent(flowruleId, l);
                 });
                 //Install flowrule on last device (redirect to host)
                 installPathFlowRule(dstHost.location(), OutputDevicePort, dstMac, protocol, srcIp, srcIpPort, dstIp, dstIpPort);
 
                 reversePath.links().forEach(l -> {
-                    installPathFlowRule(l.src(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+                    FlowId flowruleId = installPathFlowRule(l.src(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+                    ActiveLinks.merge(l, 1, Integer::sum);
+                    ActiveFlowrules.putIfAbsent(flowruleId, l);
+
                 });
                 //Install flowrule on last device of reverse path
                 installPathFlowRule(context.inPacket().receivedFrom(), InputDevicePort, dstMac, protocol, dstIp, dstIpPort, srcIp, srcIpPort);
@@ -478,9 +571,140 @@ public class MpiController implements MpiControllerInterface{
             return auxPath;
         }
 
+        //Select a path which first jump does not match with input port (possible cicle)
+        private Path selectBalancedPaths(Set<Path> paths, PortNumber inputDevicePort) {
+            Path defPath = null;
+            Path auxPath = null;
+
+            for(Path p : paths){
+                int pathScore=0;
+                int auxScore=0;
+                auxPath = p;
+
+                if(!p.src().port().equals(inputDevicePort)){
+                    //For each link in the path, if links are not used, or are the less used, we took that path (load balancing)
+                    for(Link link : p.links()){
+                        //Build temp path with links weigths
+                        auxScore += ActiveLinks.getOrDefault(link, 0);
+
+                    }
+                    //If links are less used, path score will be lower
+                    if(auxScore <= pathScore) defPath = auxPath;
+                }
+            }
+
+            if(defPath == null){
+                return auxPath;
+            }else{
+                return defPath;
+            }
+
+        }
+
+        //Select a path which first jump does not match with input port (possible cicle)
+        private Path selectMPIPaths(Set<Path> paths, PortNumber inputDevicePort) {
+            Path defPath = null;
+            Path auxPath = null;
+
+            for(Path p : paths){
+                int pathScore=0;
+                int auxScore=0;
+                auxPath = p;
+
+                if(!p.src().port().equals(inputDevicePort)){
+                    //For each link in the path, if links are not used, or are the less used, we took that path (load balancing)
+                    for(Link link : p.links()){
+                        //Build temp path with links weigths
+                        auxScore += ActiveLinks.getOrDefault(link, 0);
+
+                    }
+                    //If links are less used, path score will be lower
+                    if(auxScore < pathScore) defPath = auxPath;
+                }
+            }
+
+            if(defPath == null){
+                return auxPath;
+            }else{
+                return defPath;
+            }
+
+        }
+
+
+
 
         //Install path flowrule -> return id of flowrule installed?
-        private void installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort,
+        private FlowId installMPIPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp,
+                                         Ip4Address dstIp, int dstIpPort, boolean reverse) {
+
+            TrafficSelector.Builder selector;
+            //Matching rule
+            if(reverse){ //Reverse path, when packets come from destination (source tcp port == dstIpPort)
+
+                selector = DefaultTrafficSelector.builder().
+                        matchEthType(Ethernet.TYPE_IPV4).
+                        matchIPSrc(srcIp.toIpPrefix()).
+                        matchIPDst(dstIp.toIpPrefix()).
+                        matchIPProtocol(protocol);
+                if(protocol == IPv4.PROTOCOL_TCP){
+                    selector.matchTcpSrc(TpPort.tpPort(dstIpPort));
+                }else if(protocol == IPv4.PROTOCOL_UDP){
+                    selector.matchUdpSrc(TpPort.tpPort(dstIpPort));
+                }
+                //Treatment rule
+                TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder().setOutput(dstConnectionPoint.port());
+
+                //FlowRule
+                FlowRule.Builder flowrule = DefaultFlowRule.builder().
+                        withSelector(selector.build()).
+                        withTreatment(treatment.build()).
+                        fromApp(appId).
+                        forDevice(dstConnectionPoint.deviceId()).
+                        withPriority(PacketPriority.HIGH.priorityValue()). //Higher priority to force use this flowrule
+                        makeTemporary(10);
+
+                FlowRule installFlowrule = flowrule.build();
+                //Apply rule - test this:
+                flowRuleService.applyFlowRules(flowrule.build());
+                return installFlowrule.id();
+
+            }else{ //Standard path, when packets go from source to destination (dst tcp port == dstIpPort)
+
+                 selector = DefaultTrafficSelector.builder().
+                        matchEthType(Ethernet.TYPE_IPV4).
+                        matchIPSrc(srcIp.toIpPrefix()).
+                        matchIPDst(dstIp.toIpPrefix()).
+                        matchIPProtocol(protocol);
+                if(protocol == IPv4.PROTOCOL_TCP){
+                    selector.matchTcpDst(TpPort.tpPort(dstIpPort));
+                }else if(protocol == IPv4.PROTOCOL_UDP){
+                    selector.matchUdpDst(TpPort.tpPort(dstIpPort));
+                }
+                //Treatment rule
+                TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder().setOutput(dstConnectionPoint.port());
+
+                //FlowRule
+                FlowRule.Builder flowrule = DefaultFlowRule.builder().
+                        withSelector(selector.build()).
+                        withTreatment(treatment.build()).
+                        fromApp(appId).
+                        forDevice(dstConnectionPoint.deviceId()).
+                        withPriority(PacketPriority.HIGH.priorityValue()). //Higher priority to force use this flowrule
+                        makeTemporary(10);
+
+
+                FlowRule installFlowrule = flowrule.build();
+                //Apply rule - test this:
+                flowRuleService.applyFlowRules(flowrule.build());
+                return installFlowrule.id();
+
+
+            }
+        }
+
+
+        private FlowId installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort,
                                          Ip4Address dstIp, int dstIpPort) {
 
 
@@ -512,12 +736,14 @@ public class MpiController implements MpiControllerInterface{
 
 
             //Apply rule - test this:
+            FlowRule installFlowrule = flowrule.build();
+            //Apply rule - test this:
             flowRuleService.applyFlowRules(flowrule.build());
-            return;
+            return installFlowrule.id();
         }
 
 
-        //Install path flowrule for specific device output port and destination mac. -> return id of flowrule installed?
+        //Install path flowrule for specific device output port and destination mac
         private void installPathFlowRule(ConnectPoint dstConnectionPoint, PortNumber outputPort, MacAddress dstMac, byte protocol,
                                                       Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
 
@@ -563,21 +789,6 @@ public class MpiController implements MpiControllerInterface{
             context.send();
         }
 
-        //TODO  LIMPIAR PATHS CUANDO SE ELIMINAN LAS FLOWRULES, PARA DAR BALANCEO DE CARGA
-        private void cleanPathFlowRule(){
-
-        }
-
-
-
-        //TODO
-        private void newMPIEndpoint(int[] peerAddr){
-            //peerAddr[0] es la dirección IP del endpoint. peerAddr[1] es el puerto del endpoint.
-            /*if(MPIEndpoints.containsKey(peerAddr[0]){
-                //Poner el puerto del switch en el que está el host
-                //Endpoints.get(peerAddr[0]).computeIfAbsent(peerAddr[1], key -> hostService.getHostsByIp(IpAddress.valueOf(peerAddr[0]).getIp4Address()));
-            }*/
-        }
 
 
         //TODO
@@ -596,11 +807,21 @@ public class MpiController implements MpiControllerInterface{
 
             if(flowrule.appId() == appId.id()){
                 switch (event.type()){
-                    case RULE_ADDED:
-                        log.info("NEW FLOWRULE ADDED: "+ flowrule.id());
-                        break;
+                    //case RULE_ADDED:
+                    //    log.info("NEW FLOWRULE ADDED: "+ flowrule.id());
+                    //    break;
                     case RULE_REMOVED:
                         log.info("FLOWRULE REMOVED: "+ flowrule.id());
+                        //Remove flowrules and the links they are using
+                        Link usedLink = ActiveFlowrules.getOrDefault(flowrule.id(), null);
+                        if(usedLink != null){
+                            ActiveFlowrules.remove(flowrule.id());
+
+                            //Decrease usage of links when the flowrules that use them expire
+                            ActiveLinks.computeIfPresent(usedLink, (key, val) -> val > 0 ? val -1 : 0);
+                        }
+                        log.info("*********USED LINKS********* :\n "+ Arrays.asList(ActiveLinks));
+
                         break;
 
                     default: break;

@@ -1,4 +1,5 @@
 #/bin/sh
+#this is not necessary as ovs-ctl start or systemctl service automatically initialize ovs
 
 ovsdb-server --remote=punix:/usr/local/var/run/openvswitch/db.sock \
 --remote=db:Open_vSwitch, Open_vSwitch, manager_options \

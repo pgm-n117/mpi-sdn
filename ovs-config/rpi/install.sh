@@ -1,5 +1,11 @@
 #/bin/bash
 
+
+#If using Ubuntu, Debian, Raspbian... better to install from repos: sudo apt install openvswitch-switch
+#Else, compile from repo. Use version 2.10.7, apparently it works with /etc/network/interfaces automatically
+#Necessary to use systemctl services, automatically enabled if using apt
+
+
 git clone https://github.com/openvswitch/ovs.git &&
 
 
@@ -14,8 +20,8 @@ sudo make && sudo make install
 #start service with sudo ./ovs-ctl start
 
 #or set system service with
-#sudo systemctl enable openvswitch.switch
-#sudo systemctl start openvswitch-switch
+#sudo systemctl enable openvswitch-switch.service
+#sudo systemctl start openvswitch-switch.service
 
 
 

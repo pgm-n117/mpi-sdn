@@ -32,7 +32,7 @@ ovs_type OVSPort
 #create eth2 as ovs_port
 auto eth2
 allow-br-phys eth2
-iface eth3 inet manual
+iface eth2 inet manual
 ovs_bridge brd0
 ovs_type OVSPort
 

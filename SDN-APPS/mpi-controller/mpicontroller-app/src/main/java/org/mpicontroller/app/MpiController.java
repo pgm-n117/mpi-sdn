@@ -113,6 +113,7 @@ public class MpiController implements MpiControllerInterface{
 
     private ConcurrentMap<FlowId, Link> ActiveFlowrules = new ConcurrentHashMap<>(); //Active flowrules (id) and the link its using
     private ConcurrentMap<Link, Double> ActiveLinks = new ConcurrentHashMap<>(); //Links and their usage by active paths (times used by a flowrule) -> for load balancing
+    private ConcurrentMap<Link, Double> ActiveMPILinks = new ConcurrentHashMap<>(); //Links and their usage by active paths (times used by a flowrule) -> for load balancing
 
     private Object mutex =  new Object();
 
@@ -144,7 +145,7 @@ public class MpiController implements MpiControllerInterface{
                 //IPV4
                 packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
                 //To catch all MPI Init UDP messages
-                packetService.requestPackets(DefaultTrafficSelector.builder().matchUdpDst(TpPort.tpPort(7777)).build(), PacketPriority.HIGH, appId, Optional.of(connectPoint.deviceId()));
+                //packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).matchUdpDst(TpPort.tpPort(7777)).build(), PacketPriority.HIGH, appId, Optional.of(connectPoint.deviceId()));
 
             });
 
@@ -166,7 +167,7 @@ public class MpiController implements MpiControllerInterface{
             packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
             //IPV4
             packetService.cancelPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
-            packetService.cancelPackets(DefaultTrafficSelector.builder().matchUdpDst(TpPort.tpPort(7777)).build(), PacketPriority.HIGH, appId, Optional.of(connectPoint.deviceId()));
+            //packetService.cancelPackets(DefaultTrafficSelector.builder().matchUdpDst(TpPort.tpPort(7777)).build(), PacketPriority.HIGH, appId, Optional.of(connectPoint.deviceId()));
         });
 
         flowRuleService.removeFlowRulesById(appId);
@@ -425,8 +426,8 @@ public class MpiController implements MpiControllerInterface{
             DeviceId InputDeviceId = sourceHost.location().deviceId();
             PortNumber InputDevicePort = sourceHost.location().port();
 
-            DeviceId OutputDeviceId = context.inPacket().receivedFrom().deviceId();
-            PortNumber OutputDevicePort = context.inPacket().receivedFrom().port();
+            DeviceId OutputDeviceId = dstHost.location().deviceId();
+            PortNumber OutputDevicePort = dstHost.location().port();
 
             //Source and destination hosts are under same network device
             if(InputDeviceId.equals(OutputDeviceId)){
@@ -436,7 +437,7 @@ public class MpiController implements MpiControllerInterface{
                     //Install flowrule setting route on same device:
                     installMPIPathFlowRule(dstHost.location(), protocol, srcIp, dstIpAddress, dstIpPort, false);
                     //Reverse path
-                    installMPIPathFlowRule(context.inPacket().receivedFrom(), protocol, dstIpAddress, srcIp, dstIpPort, true);
+                    installMPIPathFlowRule(sourceHost.location(), protocol, dstIpAddress, srcIp, dstIpPort, true);
 
                 }
                 return;
@@ -464,7 +465,7 @@ public class MpiController implements MpiControllerInterface{
                     FlowId flowruleId = installMPIPathFlowRule(l.src(), protocol, srcIp, dstIpAddress, dstIpPort, false);
                     if(flowruleId != null) { //If path and flowrule installation success
                         synchronized (mutex) {
-                            ActiveLinks.merge(l, 1.0, Double::sum);
+                            ActiveMPILinks.merge(l, 1.0, Double::sum);
                             ActiveFlowrules.putIfAbsent(flowruleId, l);
 
                         }
@@ -477,15 +478,16 @@ public class MpiController implements MpiControllerInterface{
                     FlowId flowruleId = installMPIPathFlowRule(l.src(), protocol, dstIpAddress, srcIp, dstIpPort, true);
                     if(flowruleId != null) { //If path and flowrule installation success
                         synchronized (mutex) {
-                            ActiveLinks.merge(l, 1.0, Double::sum);
+                            ActiveMPILinks.merge(l, 0.5, Double::sum);
                             ActiveFlowrules.putIfAbsent(flowruleId, l);
 
                         }
                     }
                 });
                 //Install flowrule on last device of reverse path
-                installMPIPathFlowRule(context.inPacket().receivedFrom(), protocol, dstIpAddress, srcIp, dstIpPort, true);
+                installMPIPathFlowRule(sourceHost.location(), protocol, dstIpAddress, srcIp, dstIpPort, true);
 
+                log.info("*********NEW MPI PATHS********* :\n "+ Arrays.asList(ActiveMPILinks));
                 return;
             }
             else{
@@ -553,13 +555,13 @@ public class MpiController implements MpiControllerInterface{
 
                 reversePath.links().forEach(l -> {
                     FlowId flowruleId = installPathFlowRule(l.src(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
-                    if(flowruleId != null) { //If path and flowrule installation success
+                    /*if(flowruleId != null) { //If path and flowrule installation success
                         synchronized (mutex) {
-                            ActiveLinks.merge(l, 1.0, Double::sum);
+                            ActiveLinks.merge(l, 0.5, Double::sum);
                             ActiveFlowrules.putIfAbsent(flowruleId, l);
 
                         }
-                    }
+                    }*/
 
                 });
                 //Install flowrule on last device of reverse path
@@ -644,12 +646,15 @@ public class MpiController implements MpiControllerInterface{
                     for(Link link : p.links()){
                         //Build temp path with links weigths
                         synchronized (mutex) {
-                            auxScore += ActiveLinks.getOrDefault(link, 0.0);
+                            auxScore += ActiveMPILinks.getOrDefault(link, 0.0);
                         }
 
                     }
                     //If links are less used, path score will be lower
-                    if(auxScore < pathScore) defPath = auxPath;
+                    if(auxScore < pathScore) {
+                        defPath = auxPath;
+                        pathScore = auxScore;
+                    }
                 }
             }
 
@@ -693,6 +698,9 @@ public class MpiController implements MpiControllerInterface{
                         forDevice(dstConnectionPoint.deviceId()).
                         withPriority(PacketPriority.HIGH.priorityValue()). //Higher priority to force use this flowrule
                         makeTemporary(200);
+                /*200 seconds to ensure that flows still active during compute times. i.e: matrix product
+                  In theory, the rules should be fixed until MPI job is finished, but this is not implemented yet
+                * */
 
                 FlowRule installFlowrule = flowrule.build();
                 //Apply rule - test this:
@@ -860,21 +868,27 @@ public class MpiController implements MpiControllerInterface{
                                     sender, and server is always identified as receiver.
                                 */
                                 ActiveLinks.computeIfPresent(usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);
+                                ActiveMPILinks.computeIfPresent(usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);
 
+                            }
+                            /*If all flowrules are removed, reset counters. Sometimes counters are not fully decremented (?)
+
+                              This should only happen when an mpi job is finished, using the MPI Init UDP message of MPI
+                              implementation on the repo. On every other case, this happens when the timer of every flowrule
+                              expires
+                            */
+
+                            log.info("***********PENDING APP FLOWRULES***********"+flowRuleService.getFlowRulesByGroupId(appId, flowrule.groupId().id().shortValue()).spliterator().getExactSizeIfKnown());
+                            if(flowRuleService.getFlowRulesByGroupId(appId, flowrule.groupId().id().shortValue()).spliterator().getExactSizeIfKnown() == 0) {
+                                ActiveFlowrules = new ConcurrentHashMap<>();
+                                ActiveLinks = new ConcurrentHashMap<>();
+                                ActiveMPILinks = new ConcurrentHashMap<>();
+                                log.info("*********RESET LINKS********* :\n " + Arrays.asList(ActiveLinks));
+                                log.info("*********RESET MPI LINKS********* :\n " + Arrays.asList(ActiveMPILinks));
                             }
                         }
 
-                        /*If all flowrules are removed, reset counters. Sometimes counters are not fully decremented (?)
 
-                          This should only happen when an mpi job is finished, using the MPI Init UDP message of MPI
-                          implementation on the repo. On every other case, this happens when the timer of every flowrule
-                           expires
-                        */
-                        if(flowRuleService.getFlowRulesByGroupId(appId, flowrule.groupId().id().shortValue()).spliterator().getExactSizeIfKnown() == 0) {
-                            ActiveFlowrules = new ConcurrentHashMap<>();
-                            ActiveLinks = new ConcurrentHashMap<>();
-                            log.info("*********RESET LINKS********* :\n " + Arrays.asList(ActiveLinks));
-                        }
                         //log.info("*********USED LINKS********* :\n "+ Arrays.asList(ActiveLinks));
 
                         break;

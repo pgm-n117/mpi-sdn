@@ -1,0 +1,67 @@
+#/etc/config/network
+
+config interface 'loopback'
+option ifname 'lo'
+option proto 'static'
+option ipaddr '127.0.0.0'
+option netmask '255.0.0.0'
+
+config globals 'globals'
+
+config interface 'lan'
+option type 'bridge'
+option ifname 'eth0.1'
+option delegate '0'
+option proto 'static'
+option ipaddr '192.168.1.6'
+option netmask '255.255.255.0'
+option gateway '192.168.1.1'
+
+config switch
+option name 'switch0'
+option reset '1'
+option enable_vlan '1'
+
+config switch_vlan
+option device 'switch0'
+option vlan '1'
+option ports '3 8t'
+
+
+config switch_vlan
+option device 'switch0'
+option vlan '10'
+option ports '2 8t'
+
+
+config switch_vlan
+option device 'switch0'
+option vlan '11'
+option ports '1 8t'
+
+
+config switch_vlan
+option device 'switch0'
+option vlan '12'
+option ports '0 8t'
+
+config interface 'sw1'
+option ifname 'eth0.10'
+option proto 'static'
+option delegate '0'
+
+config interface 'sw2'
+option ifname 'eth0.11'
+option proto 'static'
+option delegate '0'
+
+config interface 'sw3'
+option ifname 'eth0.12'
+option proto 'static'
+option delegate '0'
+
+
+
+
+
+

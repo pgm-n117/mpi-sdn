@@ -1,0 +1,55 @@
+#/etc/network/interfaces
+
+auto lo
+iface lo inet loopback
+
+
+#set eth0 address to switch
+auto eth0
+iface eth0 inet static
+address 192.168.1.10
+netmask 255.255.255.0
+gateway 192.168.1.1
+
+#Create OpenvSwitch
+auto brd0
+allow-ovs brd0
+iface brd0 inet manual
+ovs_type OVSBridge
+ovs_ports eth1
+ovs_ports eth2
+ovs_ports eth3
+ovs_ports eth4
+
+
+#create eth1 as ovs_port
+auto eth1
+allow-br-phys eth1
+iface eth1 inet manual
+ovs_bridge brd0
+ovs_type OVSPort
+
+#create eth2 as ovs_port
+auto eth2
+allow-br-phys eth2
+iface eth2 inet manual
+ovs_bridge brd0
+ovs_type OVSPort
+
+#create eth3 as ovs_port
+auto eth3
+allow-br-phys eth3
+iface eth3 inet manual
+ovs_bridge brd0
+ovs_type OVSPort
+
+#create eth4 as ovs_port
+auto eth4
+allow-br-phys eth4
+iface eth4 inet manual
+ovs_bridge brd0
+ovs_type OVSPort
+
+allow-hotplug wlan0
+iface wlan0 inet dhcp
+wpa-conf /etc/wpa_supplicant/wpa_supplicant.conf

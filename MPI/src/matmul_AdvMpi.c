@@ -135,10 +135,7 @@ int main(int argc, char **argv){
     free(mA);
     free(mC);
 
-    MPI_Finalize();				//Final de programa MPI
 
-
-    
     if(node == 0){
         
         if(argc > 4){
@@ -148,6 +145,8 @@ int main(int argc, char **argv){
         }else printf("Tiempo de ejecución del segmento MPI: %f\n", time);
     
     }
+
+    MPI_Finalize();				//Final de programa MPI
     
 }  
 

@@ -97,7 +97,7 @@ this section shows how images are built, showing dependencies used and created d
 
   USER ${USER}
   WORKDIR /home/${USER}
-  #You can mount volumes or ryu apps in this directory
+  #Symbolic link to Ryu's example apps on users home directory
   RUN mkdir ryu-apps && ln -s /usr/local/lib/python3.7/site-packages/ryu/app ryu-apps
   ```
 
@@ -119,7 +119,7 @@ this section shows how images are built, showing dependencies used and created d
 
   USER ${USER}
   WORKDIR /home/${USER}
-  #You can mount volumes or ryu apps in this directory
+  #Symbolic link to Ryu's example apps on users home directory
   RUN mkdir ryu-apps && ln -s /usr/local/lib/python3.7/site-packages/ryu/app ryu-apps
   ```
 <!---#### Environment Variables

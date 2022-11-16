@@ -1,5 +1,5 @@
 version: "3"
-#usage: docker-compose -d [ryu-controller, ryu-controller-alpine] up 
+#usage: docker-compose up -d [ryu-controller, ryu-controller-alpine]  
 #attach to shell: docker exec -it [ryu-controller, ryu-controller-alpine] [bash,sh]
 services:
   ryu-controller:

@@ -1,5 +1,9 @@
 version: "3"
 #for using with dockerfiles
+#building:
+  #docker-compose -f docker-compose__.yml build ryu-controller
+  #docker-compose -f docker-compose__.yml build ryu-controller-alpine
+
 #usage: docker-compose -d [ryu-controller, ryu-controller-alpine] up 
 #attach to shell: docker exec -it [ryu-controller, ryu-controller-alpine] [bash,sh]
 services:

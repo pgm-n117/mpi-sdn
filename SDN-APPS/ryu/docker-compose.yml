@@ -5,7 +5,8 @@ services:
   ryu-controller:
     profiles: ["debian"]
     container_name: ryu-controller
-    image: pgmconreg/sdn_ryu:bullseye
+    image: pgmconreg/sdn_ryu:bullseye_latest
+    #image: ryu-controller:latest #when building
     expose:
       - 6633
       - 8080 #for webservers of topology
@@ -13,11 +14,12 @@ services:
       - "6633:6633"
       - "8080:8080"
     volumes: #/path/on/host:/path/on/container
-      - "/home/${USER}/<desired_directory>:/home/${USER}/externals" #mount desired directory into container. ${USER} references local host user, not containers user
+      - "/home/${USER}/${RYU_APP}:/home/${USER}/${RYU_APP}" #mount desired directory into container. ${USER} references local host user, not containers user
     tty: true
 
   ryu-controller-alpine:
     profiles: ["alpine"]
     extends: ryu-controller
     container_name: ryu-controller-alpine
-    image: pgmconreg/sdn_ryu:alpine
+    image: pgmconreg/sdn_ryu:alpine_latest
+    #image: ryu-controller-alpine:latest #when building

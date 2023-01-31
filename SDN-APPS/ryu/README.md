@@ -6,10 +6,12 @@ Ryu SDN Controller using Python 3.7. Built with Debian Bullseye and Alpine for r
 ## Getting Started
 
 - Debian images changelog:
-  - sdn_ryu:bullseye_1.1 = sdn_ryu:bullseye_latest (added graphviz, matplotlib, bokeh==2.4.3, pandas==1.3.5 and necessary dependencies)
+  - sdn_ryu:bullseye_1.2 = sdn_ryu:bullseye_latest (added pydot, shapely, GEOS, pygraphviz, dash, plotly and dash-cytoscape)
+  - sdn_ryu:bullseye_1.1 (added graphviz, matplotlib, bokeh==2.4.3, pandas==1.3.5 and necessary dependencies)
   - sdn_ryu:bullseye
 - Alpine images changelog:
-  - sdn_ryu:alpine_1.1 = sdn_ryu:alpine_latest (added graphviz, matplotlib, bokeh==2.4.3, pandas==1.3.5 and necessary dependencies)
+  - sdn_ryu:alpine_1.2 = sdn_ryu:alpine_latest (added pydot, shapely, GEOS, pygraphviz, dash, plotly and dash-cytoscape)
+  - sdn_ryu:alpine_1.1 (added graphviz, matplotlib, bokeh==2.4.3, pandas==1.3.5 and necessary dependencies)
   - sdn_ryu:alpine
 
 ```shell
@@ -94,10 +96,10 @@ this section shows how images are built, showing dependencies used and created d
   EXPOSE 6633 8080
   
   RUN apt update && apt upgrade -y
-  RUN apt install -y gcc libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev mlocate git curl make libpng-dev libjpeg-dev
+  RUN apt install -y gcc libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev mlocate git curl make libpng-dev libjpeg-dev libgeos-dev graphviz graphviz-dev
   RUN updatedb
   RUN python -m pip install --upgrade pip setuptools wheel
-  RUN pip install ryu networkx requests numpy WebOb eventlet==0.30.2 Routes six tinyrpc graphviz matplotlib bokeh==2.4.3 pandas==1.3.5
+  RUN pip install ryu networkx requests numpy WebOb eventlet==0.30.2 Routes six tinyrpc graphviz matplotlib bokeh==2.4.3 pandas==1.3.5 pydot GEOS shapely pygraphviz dash plotly dash-cytoscape
   
   #non root user for security reasons, change uid as desired
   RUN useradd -u 1000 -ms /bin/bash ${USER} 
@@ -113,13 +115,13 @@ this section shows how images are built, showing dependencies used and created d
   #default user, change it on docker-compose
   ARG USER=ryu-user
   EXPOSE 6633 8080
-
+  
   RUN apk update
-  RUN apk --no-cache add gcc libffi-dev libxml2-dev mlocate git curl make musl-dev linux-headers g++ bzip2-dev libpng-dev libjpeg qhull-dev libxslt-dev libgcc openssl-dev jpeg-dev zlib-dev freetype-dev lcms2-dev openjpeg-dev tiff-dev tk-dev tcl-dev
-
+  RUN apk --no-cache add gcc libffi-dev libxml2-dev mlocate git curl make musl-dev linux-headers g++ bzip2-dev libpng-dev libjpeg qhull-dev libxslt-dev libgcc openssl-dev jpeg-dev zlib-dev freetype-dev lcms2-dev openjpeg-dev tiff-dev tk-dev tcl-dev geos-dev graphviz graphviz-dev
+  
   RUN updatedb
   RUN python -m pip install --upgrade pip setuptools wheel
-  RUN pip install --config-settings system_qhull=true cython pyhull pillow ryu networkx requests numpy WebOb eventlet==0.30.2 Routes six tinyrpc graphviz matplotlib==3.3.4 bokeh==2.4.3 pandas==1.3.5
+  RUN pip install --config-settings system_qhull=true cython pyhull pillow ryu networkx requests numpy WebOb eventlet==0.30.2 Routes six tinyrpc graphviz matplotlib==3.3.4 bokeh==2.4.3 pandas==1.3.5 pydot GEOS shapely pygraphviz dash plotly dash-cytoscape
   #non root user for security reasons, change uid as desired
   RUN addgroup -S ryu-group && adduser -u 1000 -s /bin/bash -S ${USER} -G ryu-group 
   USER ${USER}

@@ -52,15 +52,23 @@ chmod +x bazelisk-linux-amd64
 sudo mv bazelisk-linux-amd64 /usr/local/bin/bazel
 
 #ONOS
+##Download ONOS
 cd ~
 wget https://github.com/opennetworkinglab/onos/archive/refs/tags/2.7.0.tar.gz
 tar -xf 2.7.0.tar.gz
 mv onos-2.7.0 onos
 cd ~/onos
-#python 2.7, used with pyenv
-pyenv local 2.7 #creates .python-version file, used by pyenv
+##build ONOS
 bazel version
 bazel build onos
+
+##Add binaries to .bashrc
+export ONOS_ROOT=~/onos
+source $ONOS_ROOT/tools/dev/bash_profile
+
+##Run ONOS on its root directory:
+cd ~/onos
+bazel run onos-local -- <clean> <debug>
 
 ```
 

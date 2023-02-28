@@ -12,11 +12,11 @@ services:
     #image: ryu-controller:latest #when building
     expose:
       - 6633
-      - 8888 #Dashboard
+      - 8050 #Dashboard
       - 8080 #for webservers of topology
     ports: #<host port>:<container port>
       - "6633:6633"
-      - "8888:8888"
+      - "8050:8050"
       - "8080:8080"
     volumes: #/path/on/host:/path/on/container
       - "/home/${USER}/${RYU_APP}:/home/${USER}/${RYU_APP}" #mount desired directory into container. ${USER} references local host user, not containers user

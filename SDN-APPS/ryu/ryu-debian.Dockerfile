@@ -1,7 +1,7 @@
 FROM python:3.7-bullseye
 #default user, change it on docker-compose
 ARG USER=ryu-user
-EXPOSE 6633 8080 8888
+EXPOSE 6633 8080 8050
 
 RUN apt update && apt upgrade -y
 RUN apt install -y gcc libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev mlocate git curl make libpng-dev libjpeg-dev libgeos-dev graphviz graphviz-dev net-tools

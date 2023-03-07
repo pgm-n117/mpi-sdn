@@ -17,5 +17,4 @@ test/
 *.vscode
 bak/
 *.iml
-SDN-APPS/ryu/launch-controller.sh
 SDN-APPS/ryu/.build-docker

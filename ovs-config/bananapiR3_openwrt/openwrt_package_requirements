@@ -1,0 +1,4 @@
+#When added default gateway and a dns (resolv.conf), you should download this packages 
+#to easy manage the switch, run OVS and get stats from interfaces
+
+opkg update && opkg install luci openvswitch iperf ifstat

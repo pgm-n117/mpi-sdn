@@ -1,0 +1,38 @@
+version: "3"
+#for using with dockerfiles
+#building:
+  #docker-compose -f docker-compose__.yml build ryu-controller
+  #docker-compose -f docker-compose__.yml build ryu-controller-alpine
+
+#usage: docker-compose -d [ryu-controller, ryu-controller-alpine] up 
+#attach to shell: docker exec -it [ryu-controller, ryu-controller-alpine] [bash,sh]
+services:
+  ryu-controller:
+    profiles: ["debian"]
+    container_name: ryu-controller
+    image: ryu-controller
+    build:
+      context: .
+      dockerfile: ryu-debian.Dockerfile
+      args:
+        - USER=ryu-user
+    environment:
+      - USER="ryu-user"
+    expose:
+      - 6633
+      - 8080 #for webservers of topology
+    ports: #<host port>:<container port>
+      - "6633:6633"
+      - "8080:8080"
+    volumes: #/path/on/host:/path/on/container
+      - "/home/${USER}/<desired_directory>:/home/${USER}/externals" #mount desired directory into container. ${USER} references local host user, not containers user
+    tty: true
+
+  ryu-controller-alpine:
+    profiles: ["alpine"]
+    extends: ryu-controller
+    container_name: ryu-controller-alpine
+    image: ryu-controller-alpine
+    build:
+      context: .
+      dockerfile: ryu-alpine.Dockerfile

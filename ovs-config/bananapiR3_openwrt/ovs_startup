@@ -1,0 +1,15 @@
+#commands to start ovs and configure virtual switch interfaces with physical interfaces
+#only need to configure switch once, then you can launch OVS on every startup using ovs-ctl start, and stop it using ovs-ctl stop
+
+ovs-ctl start 
+
+ovs-vsctl add-br sdn–sw1 
+ovs-vsctl add-port sdn-sw1 lan1 -- set Interface lan1 ofport_request=1 
+ovs-vsctl add-port sdn-sw1 lan2 -- set Interface lan2 ofport_request=2 
+ovs-vsctl add-port sdn-sw1 lan3 -- set Interface lan3 ofport_request=3 
+ovs-vsctl add-port sdn-sw1 lan4 -- set Interface lan4 ofport_request=4 
+ovs-vsctl add-port sdn-sw1 eth1 -- set Interface eth1 ofport_request=5 
+ovs-vsctl add-port sdn-sw1 sfp2 -- set Interface sfp2 ofport_request=6 
+
+ovs-vsctl set-controller sdn-sw1 tcp:<controller address>:6633 
+ovs-vsctl set bridge sdn-sw1 protocols=OpenFlow13 

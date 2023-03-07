@@ -1,0 +1,69 @@
+#/etc/config/network
+
+#This config file uses sfp interfaces (eth1 and sfp2) and rj45 interfaces (lan1 lan2 lan3 lan4) as switch interfaces
+#Wan interface is used to connect to controller, using 'br-lan' desired static address configuration
+
+config interface 'loopback'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
+
+config device
+	option name 'br-lan'
+	option type 'bridge'
+	list ports 'wan'
+
+config interface 'lan'
+	option device 'br-lan'
+	option proto 'static'
+	option netmask '<netmask>'
+	option ip6assign '60'
+	option ipaddr '<ip addr>'
+	option gateway '<gateway>'
+
+config device
+	option name 'br-wan'
+	option type 'bridge'
+	list ports 'eth1'
+	list ports 'wan'
+
+config device
+	option name 'eth1'
+	option macaddr '52:bb:ac:f3:dd:1b'
+
+config device
+	option name 'wan'
+	option macaddr '52:bb:ac:f3:dd:1b'
+
+config device
+	option name 'sfp2'
+	option ipv6 '0'
+
+config device
+	option name 'lan1'
+	option promisc '0'
+
+config interface 'lan1'
+	option proto 'none'
+	option device 'lan1'
+
+config interface 'lan2'
+	option proto 'none'
+	option device 'lan2'
+
+config interface 'lan3'
+	option proto 'none'
+	option device 'lan3'
+
+config interface 'lan4'
+	option proto 'none'
+	option device 'lan4'
+
+config interface 'eth1'
+	option proto 'none'
+	option device 'eth1'
+
+config interface 'sfp2'
+	option proto 'none'
+	option device 'sfp2'

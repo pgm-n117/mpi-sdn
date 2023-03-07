@@ -1,0 +1,21 @@
+version: "3"
+#for using with just one dockerfile
+services:
+  ryu-controller:
+    container_name: ryu-controller
+    image: ryu-controller
+    build:
+      context: .
+      args:
+        - USER=ryu-user #Change as desired to build Dockerfile
+    environment:
+      - USER="ryu-user" #Change as desired to build Dockerfile
+    expose:
+      - 6633
+      - 8080 #for webservers of topology
+    ports: #<host port>:<container port>
+      - "6633:6633"
+      - "8080:8080"
+    volumes: #/path/on/host:/path/on/container
+      - "/home/${USER}/<desired_directory>:/home/${USER}/externals" #mount desired directory into container. ${USER} references local host user, not containers user
+    tty: true

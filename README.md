@@ -11,12 +11,12 @@ This work was developed for the College Degree final project, and Master's Degre
 Currently, this project is being written in Python, for RYU controller
 
 ## OVS Config
-ovs-config contains the configurations files in order to make an OpenVSwitch with physical interfaces. Currently, there are 2 configurations available:
+ovs-config contains the configurations files in order to make an OpenVSwitch with physical interfaces. Currently, there are 3 configurations available:
 - RPI: Raspberry Pi configuration files. Configuration of Interfaces, for making an OpenVSwitch with USB to Ethernet adapters (a total of 5 ports, 1 integrated, 4 USB-Ethernet). Also includes scripts for downloading and compiling OVS on RPI (ARM architechture), but it is available on APT. Also a startup script is included to connect to controller on startup, building the necessary bridge and all its ports, referencing the physical interfaces.
 
 - openwrt: OpenWRT configuration files. This configuration corresponds to an old ADSL Comtrend WiFi Router, that was used as an OpenVSwitch. This uses the old syntax of network interfaces for OpenWRT.
 
-- Banana Pi R3: Future updates. OpenWRT configuration files of Banana Pi R3 with the newest network interfaces syntax. Trying to use SFP ports on the OpenVSwitch.
+- Banana Pi R3: OpenWRT configuration files of Banana Pi R3 with the newest network interfaces syntax. SFP ports are included in the OVS configuration. SFP ports have been tested with ONOS and RYU and work correctly.
 
 ## Requirements:
 

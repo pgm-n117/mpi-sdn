@@ -2,6 +2,10 @@
 
 Ryu SDN Controller using Python 3.7. Built with Debian Bullseye and Alpine for reduced image size.
 
+More details on the repo:
+- [mpi-sdn](https://github.com/pgm-n117/mpi-sdn/) under SDN-APPS/ryu folder
+- Incoming repos
+
 
 ## Getting Started
 

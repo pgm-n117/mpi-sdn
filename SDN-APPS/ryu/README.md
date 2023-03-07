@@ -48,15 +48,17 @@ services:
   ryu-controller:
     profiles:
     container_name: ryu-controller
-    image: pgmconreg/sdn_ryu:<[debian, alpine]>
+    image: pgmconreg/sdn_ryu:<debian, alpine>_latest
     expose:
       - 6633
+      - 8050 #Dashboard
       - 8080 #for webservers of topology
     ports: #<host port>:<container port>
       - "6633:6633"
+      - "8050:8050"
       - "8080:8080"
     volumes: #/path/on/host:/path/on/container
-      - "/home/${USER}/<desired_directory>:/home/${USER}/externals" #mount desired directory into container. ${USER} references local host user, not containers user
+      - "/home/${USER}/${RYU_APP}:/home/${USER}/${RYU_APP}" #mount desired directory into container. ${USER} references local host user, not containers user
     tty: true
 ```
 
@@ -69,19 +71,18 @@ services:
     container_name: ryu-controller
     image: ryu-controller
     build:
-      context: . #Place dockerfile in same directory as docker-compose
-      args:
-        - USER=ryu-user #Change as desired to build Dockerfile
-    environment:
-      - USER="ryu-user" #Change as desired to build Dockerfile
+      context: .
+      dockerfile: ./ryu-debian.Dockerfile
     expose:
       - 6633
+      - 8050 #Dashboard
       - 8080 #for webservers of topology
     ports: #<host port>:<container port>
       - "6633:6633"
+      - "8050:8050"
       - "8080:8080"
     volumes: #/path/on/host:/path/on/container
-      - "/home/${USER}/<desired_directory>:/home/${USER}/externals" #mount desired directory into container. ${USER} references local host user, not containers user
+      - "/home/${USER}/${RYU_APP}:/home/${USER}/${RYU_APP}" #mount desired directory into container. ${USER} references local host user, not containers user
     tty: true
 
   ```
@@ -93,19 +94,20 @@ this section shows how images are built, showing dependencies used and created d
   FROM python:3.7-bullseye
   #default user, change it on docker-compose
   ARG USER=ryu-user
-  EXPOSE 6633 8080
-  
+  EXPOSE 6633 8080 8050
+
   RUN apt update && apt upgrade -y
-  RUN apt install -y gcc libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev mlocate git curl make libpng-dev libjpeg-dev libgeos-dev graphviz graphviz-dev
+  RUN apt install -y gcc libffi-dev libssl-dev libxml2-dev libxslt1-dev zlib1g-dev mlocate git curl make libpng-dev libjpeg-dev libgeos-dev graphviz graphviz-dev net-tools
   RUN updatedb
   RUN python -m pip install --upgrade pip setuptools wheel
   RUN pip install ryu networkx requests numpy WebOb eventlet==0.30.2 Routes six tinyrpc graphviz matplotlib bokeh==2.4.3 pandas==1.3.5 pydot GEOS shapely pygraphviz dash plotly dash-cytoscape
-  
+
   #non root user for security reasons, change uid as desired
   RUN useradd -u 1000 -ms /bin/bash ${USER} 
   USER ${USER}
   WORKDIR /home/${USER}
   RUN mkdir ryu-apps && ln -s /usr/local/lib/python3.7/site-packages/ryu/app ryu-apps
+  ENTRYPOINT ["/bin/bash"]
   ```
 
 
@@ -114,11 +116,11 @@ this section shows how images are built, showing dependencies used and created d
   FROM python:3.7-alpine
   #default user, change it on docker-compose
   ARG USER=ryu-user
-  EXPOSE 6633 8080
-  
+  EXPOSE 6633 8080 8050
+
   RUN apk update
   RUN apk --no-cache add gcc libffi-dev libxml2-dev mlocate git curl make musl-dev linux-headers g++ bzip2-dev libpng-dev libjpeg qhull-dev libxslt-dev libgcc openssl-dev jpeg-dev zlib-dev freetype-dev lcms2-dev openjpeg-dev tiff-dev tk-dev tcl-dev geos-dev graphviz graphviz-dev
-  
+
   RUN updatedb
   RUN python -m pip install --upgrade pip setuptools wheel
   RUN pip install --config-settings system_qhull=true cython pyhull pillow ryu networkx requests numpy WebOb eventlet==0.30.2 Routes six tinyrpc graphviz matplotlib==3.3.4 bokeh==2.4.3 pandas==1.3.5 pydot GEOS shapely pygraphviz dash plotly dash-cytoscape

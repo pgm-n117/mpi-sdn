@@ -18,5 +18,4 @@ test/
 bak/
 *.iml
 SDN-APPS/ryu/launch-controller.sh
-*.build-docker
 SDN-APPS/ryu/.build-docker

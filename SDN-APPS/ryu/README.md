@@ -27,7 +27,7 @@ docker pull pgmconreg/sdn_ryu:alpine_latest
 ### Usage
 Start container with shell (use sh with alpine instead of bash):
 ```shell
-docker run -p 6633:6633 -p 8080:8080 -it <sdn_ryu:tag> /bin/bash
+docker run -p 6633:6633 -p 8080:8080 -p 8050:8050 -it <sdn_ryu:tag> /bin/bash
 ```
 
 #### Container Parameters

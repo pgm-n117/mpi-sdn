@@ -53,6 +53,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static java.nio.ByteBuffer.*;
+import static org.onlab.packet.ARP.buildArpReply;
 
 /**
  * Skeletal ONOS application component.
@@ -119,6 +120,12 @@ public class MpiController implements MpiControllerInterface{
     private Object FlowRuleMutex =  new Object();
     private Object MPILinksMutex =  new Object();
     private Object LinksMutex =  new Object();
+
+    //Address to notificate MPI tasks
+    private Ip4Address  MPI_CONTROLLER_IP= Ip4Address.valueOf("10.0.0.1");
+    private int MPI_CONTROLLER_NET_MASK = 24;
+    private IpPrefix MPI_CONTROLLER_NET = IpPrefix.valueOf(MPI_CONTROLLER_IP, MPI_CONTROLLER_NET_MASK);
+    private MacAddress MPI_CONTROLLER_MAC = MacAddress.valueOf("00:00:00:00:00:01");
 
 
     @Activate
@@ -215,10 +222,32 @@ public class MpiController implements MpiControllerInterface{
                     //log.info("ARP Packet Received");
                     //Ethernet Payload can be an ARP or IP packet
                     ARP arpPacket = (ARP) ethPacket.getPayload();
+
+
+                    //Obtain Ip address of the source device
+                    Ip4Address sourceIpAddress = Ip4Address.valueOf(arpPacket.getSenderProtocolAddress());
                     //Obtain Ip address of the target if it is an ARP REQUEST packet
                     Ip4Address targetIpAddress = Ip4Address.valueOf(arpPacket.getTargetProtocolAddress());
 
+                    //ARP REQUEST
                     if(arpPacket.getOpCode() == ARP.OP_REQUEST){
+
+                        //If the target ip address is the ip address of the controller, send an ARP REPLY
+                        if (targetIpAddress.getIp4Address().equals(MPI_CONTROLLER_IP.getIp4Address())) {
+                            log.info(" ---- ARP REQUEST FOR MPI CONTROLLER");
+                            //Send ARP REPLY to the source device
+                            ConnectPoint srcConnectionPoint = packet.receivedFrom();
+                            TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
+                                    .setOutput(srcConnectionPoint.port());
+
+                            Ethernet arpReply = ARP.buildArpReply(MPI_CONTROLLER_IP, MPI_CONTROLLER_MAC, packet.parsed());
+
+                            packetService.emit(new DefaultOutboundPacket(
+                                    srcConnectionPoint.deviceId(),
+                                    treatment.build(),
+                                    ByteBuffer.wrap(arpReply.serialize())));
+                        }
+
 
                         //Destination device connection point
                         ConnectPoint dstConnectionPoint;
@@ -324,7 +353,7 @@ public class MpiController implements MpiControllerInterface{
                         dstIpPort = udpHeader.getDestinationPort();
 
                         //IF UDP MESSAGE IS FROM MPI HOST
-                        if(dstIpAddress.equals(Ip4Address.valueOf("10.0.0.1")) & (dstIpPort == 7777)){ //ip address of controller or special ip to identify
+                        if(dstIpAddress.equals(MPI_CONTROLLER_IP) & (dstIpPort == 7777)){ //ip address of controller or special ip to identify
                             //log.info("      MPI UDP PACKET DESTINATION ADDRESS: "+dstIpAddress.toString()+":"+dstIpPort);
                             //log.info("      PEER INFO: "+(udpHeader.getPayload()));
                             byte[] rawMessage = ((byte[]) udpHeader.getPayload().serialize());
@@ -333,15 +362,38 @@ public class MpiController implements MpiControllerInterface{
                             ByteBuffer message = wrap(rawMessage);
                             message.order(ByteOrder.LITTLE_ENDIAN);
                             IntBuffer buffer = message.asIntBuffer();
-                            int[] PeerAddr = new int[2];
+                            int[] PeerAddr = new int[3];
 
                             buffer.get(PeerAddr);
 
                             int peerPort = Integer.reverseBytes(PeerAddr[1]);
                             Ip4Address peerIpAddress = Ip4Address.valueOf(PeerAddr[0]);
 
+                            if (Integer.reverseBytes(PeerAddr[2]) == 0) {
+                                log.info(" ***** MPI ENDPOINT REMOVED: "+ peerIpAddress.toString() +":"+ peerPort);
+                                //Remove MPI endpoint
+                                //if(MPIEndpoints.containsKey(peerIpAddress)){
+                                //    MPIEndpoints.get(peerIpAddress).remove(peerPort);
+                                //}
+                                return;
+                            }else if (Integer.reverseBytes(PeerAddr[2]) == 1) {
+                                log.info(" ***** MPI ENDPOINT ADDED: "+ peerIpAddress.toString() +":"+ peerPort);
+                                //Add MPI endpoint
+                                //if(MPIEndpoints.containsKey(peerIpAddress)){
+                                //    MPIEndpoints.get(peerIpAddress).putIfAbsent(peerPort, context.inPacket().receivedFrom().port());
+                                //}
+
+                            }
+
                             try{
-                                log.info("      MPI ENDPOINT ADDR INFO: "+ Ip4Address.valueOf(PeerAddr[0]) + ":" + Integer.reverseBytes(PeerAddr[1]));
+
+                                if(!MPI_CONTROLLER_NET.contains(IpPrefix.valueOf(peerIpAddress, MPI_CONTROLLER_NET_MASK))){
+                                    log.info(" ***** EXCLUDING MPI ENDPOINT: "+ peerIpAddress.toString() +", NOT IN MPI CONTROLLER NETWORK");
+                                    return;
+                                }else{
+                                    log.info(" ***** NEW MPI ENDPOINT: "+ peerIpAddress.toString() +":"+ peerPort);
+                                    //log.info("      MPI ENDPOINT ADDR INFO: "+ Ip4Address.valueOf(PeerAddr[0]) + ":" + Integer.reverseBytes(PeerAddr[1]));
+                                }
                             }catch(Exception ex){
                                 log.error(ex.toString());
                             }
@@ -370,7 +422,7 @@ public class MpiController implements MpiControllerInterface{
 
                                             srcIp = IP.getIp4Address();
 
-                                            if(srcIp.getIp4Address() != peerIpAddress.getIp4Address()) {
+                                            if(!srcIp.equals(peerIpAddress)) {
 
                                                 try {
                                                     setMPIPath(context, sourceHost, dstHost, IPv4.PROTOCOL_TCP, srcIp, peerIpAddress, peerPort);
@@ -380,6 +432,8 @@ public class MpiController implements MpiControllerInterface{
                                                     log.error(e.toString());
                                                     e.printStackTrace();
                                                 }
+                                            }else {
+                                                log.info("********* "+ srcIp.toString() +", "+ peerIpAddress.toString() +"*********");
                                             }
                                         }
                                     }

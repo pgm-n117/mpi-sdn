@@ -20,7 +20,7 @@
  */
 package org.mpicontroller.app;
 
-import scala.Tuple2;
+
 import org.onlab.packet.*;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
@@ -118,7 +118,8 @@ public class MpiController implements MpiControllerInterface {
 
     //HashMap Structure: <MPI Endpoint Pair(IpAddres-Port), Map<FlowId, Link>>:
     // Contains the active flowrules for every MPI Endpoint Pair and the links they are using
-    private ConcurrentMap<Tuple2<Ip4Address, Integer>, HashMap<FlowRule, Link>> ActiveMPIFlowrules = new ConcurrentHashMap<>(); //Active flowrules (id) and the link its using
+
+    private ConcurrentMap<MyTuple, HashMap<FlowRule, Link>> ActiveMPIFlowrules = new ConcurrentHashMap<>(); //Active flowrules (id) and the link its using
     private Object MPIFlowRuleMutex = new Object();
 
 
@@ -128,6 +129,11 @@ public class MpiController implements MpiControllerInterface {
 
     private ConcurrentMap<Link, Double> ActiveMPILinks = new ConcurrentHashMap<>(); //Links and their usage by active paths (times used by a flowrule) -> for load balancing
     private Object MPILinksMutex = new Object();
+
+    private ConcurrentMap<MyTuple, ArrayList<FlowRule>> ActiveMPIEndpoints = new ConcurrentHashMap<>();
+    private Object MPIEndpointsMutex2 = new Object();
+
+
 
 
     //Address to notificate MPI tasks
@@ -355,14 +361,14 @@ public class MpiController implements MpiControllerInterface {
                         synchronized (MPIEndpoints) {
                             if (MPIEndpoints.containsKey(dstIpAddress)) {
                                 if (MPIEndpoints.get(dstIpAddress).containsKey(dstIpPort)) {
-                                    //TODO: CHECK - install balanced flow rule
+                                    //Install balanced flow rule
                                     Host srcHost = hostService.getHostsByIp(srcIpAddress).iterator().next();
                                     Host dstHost = hostService.getHostsByIp(dstIpAddress).iterator().next();
 
                                     try {
                                         setMPIPath(context, srcHost, dstHost, IPv4.PROTOCOL_TCP, srcIpAddress, dstIpAddress, srcIpPort, dstIpPort);
                                         //log.info("*********NEW MPI USED LINKS********* :\n "+ Arrays.asList(ActiveLinks));
-                                        log.info("*********NEW MPI PATH*********" + srcIpAddress + ":" + srcIpPort + " -> " + dstIpAddress + ":" + dstIpPort);
+                                        log.info("*********NEW MPI BTL PATH*********" + srcIpAddress + ":" + srcIpPort + " -> " + dstIpAddress + ":" + dstIpPort);
                                     } catch (Exception e) {
                                         log.error(e.toString());
                                         e.printStackTrace();
@@ -409,19 +415,20 @@ public class MpiController implements MpiControllerInterface {
                                     }
                                 }
                                 log.info(" ***** MPI ENDPOINT REMOVED: " + peerIpAddress.toString() + ":" + peerPort);
-                                //TODO: Uninstall MPI Flows of an endpoint on every switch
+                                //Uninstall MPI Flows of an endpoint on every switch
                                 uninstallMPIFlow(peerIpAddress, peerPort);
 
-                                //TODO: CHECK - Remove registered flows
+                                //Remove registered flows
                                 unregisterFlow(peerIpAddress, peerPort, true);
 
+                                context.treatmentBuilder().drop();
                                 return;
 
                             } else if (Integer.reverseBytes(PeerAddr[2]) == 1) {
 
                                 //Add MPI endpoint
                                 //Store MPI endpoint. This is not really necessary if removing mpi endpoints is not implemented
-                                synchronized (MPIEndpoints) {
+                                synchronized (MPIEndpointsMutex) {
                                     if (MPIEndpoints.containsKey(peerIpAddress)) {
                                         //If endpoint is already registered, set new endpoint tcp port of new MPI process
                                         MPIEndpoints.get(peerIpAddress).putIfAbsent(peerPort, context.inPacket().receivedFrom().port());
@@ -433,9 +440,35 @@ public class MpiController implements MpiControllerInterface {
                                     }
                                 }
                                 log.info(" ***** MPI ENDPOINT ADDED: " + peerIpAddress.toString() + ":" + peerPort);
-                                //TODO: CHECK - Install specific flows to capture first MPI packets on every edge switch
+                                //Install specific flows to capture first MPI packets on every edge switch
                                 edgePortService.getEdgePoints().forEach(connectPoint -> {
-                                    packetService.requestPackets(DefaultTrafficSelector.builder().matchIPDst(peerIpAddress.toIpPrefix()).matchTcpDst(TpPort.tpPort(peerPort)).build(), PacketPriority.CONTROL, appId, Optional.of(connectPoint.deviceId()));
+                                    FlowRule.Builder endpointFlowRule = DefaultFlowRule.builder().
+                                            withSelector(DefaultTrafficSelector.builder().
+                                                    matchEthType(Ethernet.TYPE_IPV4).
+                                                    matchIPProtocol(IPv4.PROTOCOL_TCP).
+                                                    matchIPDst(peerIpAddress.toIpPrefix()).
+                                                    matchTcpDst(TpPort.tpPort(peerPort)).
+                                                    build()).
+                                            withTreatment(DefaultTrafficTreatment.builder().setOutput(PortNumber.CONTROLLER).build()).
+                                            fromApp(appId).
+                                            forDevice(connectPoint.deviceId()).
+                                            withPriority(PacketPriority.CONTROL.priorityValue()).
+                                            makePermanent();
+                                    FlowRule installFlowrule = endpointFlowRule.build();
+                                    flowRuleService.applyFlowRules(installFlowrule);
+
+                                    synchronized (MPIEndpointsMutex2){
+                                        if(ActiveMPIEndpoints.containsKey(new MyTuple(peerIpAddress, peerPort))) {
+                                            ActiveMPIEndpoints.get(new MyTuple(peerIpAddress, peerPort)).add(installFlowrule);
+                                        }else {
+                                            ArrayList<FlowRule> flows = new ArrayList<>();
+                                            flows.add(installFlowrule);
+                                            ActiveMPIEndpoints.put(new MyTuple(peerIpAddress, peerPort), flows);
+                                        }
+
+
+
+                                    }
                                 });
 
                             }
@@ -506,9 +539,11 @@ public class MpiController implements MpiControllerInterface {
                 if (!InputDevicePort.equals(OutputDevicePort)) {
                     //Install flowrule setting route on same device. Local flowrules are not necessary to be registered nor balanced:
                     FlowRule LocalMPIFlow = installMPIPathFlowRule(dstHost.location(), protocol, srcIp, dstIpAddress, srcIpPort, dstIpPort, false);
+                    registerFlow(dstIpAddress, dstIpPort, LocalMPIFlow, null, true);
 
                     //Reverse path
                     FlowRule LocalMPIReverseFlow = installMPIPathFlowRule(sourceHost.location(), protocol, dstIpAddress, srcIp, srcIpPort, dstIpPort, true);
+                    registerFlow(dstIpAddress, dstIpPort, LocalMPIFlow, null, true);
                 }
                 return;
             }
@@ -540,13 +575,17 @@ public class MpiController implements MpiControllerInterface {
 
 
                 //Install flowrule on last device (redirect to host). Last mile flowrules are not necessary to be registered nor balanced:
-                installMPIPathFlowRule(dstHost.location(), protocol, srcIp, dstIpAddress, srcIpPort, dstIpPort, false);
+                FlowRule finalFlow = installMPIPathFlowRule(dstHost.location(), protocol, srcIp, dstIpAddress, srcIpPort, dstIpPort, false);
+                registerFlow(dstIpAddress, dstIpPort, finalFlow, null, true);
 
 
                 //Install flowrule on last device of reverse path
-                installMPIPathFlowRule(sourceHost.location(), protocol, dstIpAddress, srcIp, srcIpPort, dstIpPort, true);
+                FlowRule finalReverseFlow = installMPIPathFlowRule(sourceHost.location(), protocol, dstIpAddress, srcIp, srcIpPort, dstIpPort, true);
+                registerFlow(dstIpAddress, dstIpPort, finalReverseFlow, null, true);
+
 
                 log.info("*********NEW MPI PATHS********* :\n " + Arrays.asList(ActiveMPILinks));
+
                 return;
             } else {
 
@@ -565,16 +604,20 @@ public class MpiController implements MpiControllerInterface {
             //TODO: CHECK - Save flowrule and update links usage
             if(MPI) {
                 synchronized (MPIFlowRuleMutex) {
-                    Tuple2<Ip4Address, Integer> Endpoint = new Tuple2<>(dstIpAddress, dstPort);
+                    MyTuple Endpoint = new MyTuple(dstIpAddress, dstPort);
                     if (!ActiveMPIFlowrules.containsKey(Endpoint)) {
                         ActiveMPIFlowrules.putIfAbsent(Endpoint, new HashMap<>());
                     }
                     ActiveMPIFlowrules.get(Endpoint).putIfAbsent(flowrule, l);
 
                 }
-                synchronized (MPILinksMutex) {
-                    ActiveMPILinks.merge(l, 1.0, Double::sum);
+
+                if (l != null) {
+                    synchronized (MPILinksMutex) {
+                        ActiveMPILinks.merge(l, 1.0, Double::sum);
+                    }
                 }
+
             }else{
                 synchronized (FlowRuleMutex) {
                     ActiveFlowrules.putIfAbsent(flowrule.id(), l);
@@ -587,20 +630,21 @@ public class MpiController implements MpiControllerInterface {
         }
 
         private void unregisterFlow(Ip4Address dstIpAddress, int dstPort, boolean MPI) {
-            //TODO: CHECK - Remove flowrule and update links usage
+            //Remove flowrule and update links usage
             Collection usedLinks = new ArrayList<Link>();
 
             if(MPI) {
                 synchronized (MPIFlowRuleMutex) {
-                    if (ActiveMPIFlowrules.containsKey(new Tuple2<>(dstIpAddress, dstPort))) {
+                    if (ActiveMPIFlowrules.containsKey(new MyTuple(dstIpAddress, dstPort))) {
                         //Only removes the registered entries, not uninstalls the flowrules
-                        usedLinks = ActiveMPIFlowrules.get(new Tuple2<>(dstIpAddress, dstPort)).values();
-                        ActiveMPIFlowrules.remove(new Tuple2<>(dstIpAddress, dstPort));
+                        usedLinks = ActiveMPIFlowrules.get(new MyTuple(dstIpAddress, dstPort)).values();
+                        ActiveMPIFlowrules.remove(new MyTuple(dstIpAddress, dstPort));
                     }
 
                 }
                 synchronized (MPILinksMutex) {
                     for (Object usedLink : usedLinks) {
+                        if (usedLink != null)
                         ActiveMPILinks.computeIfPresent((Link) usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);
                     }
                 }
@@ -613,8 +657,8 @@ public class MpiController implements MpiControllerInterface {
         //This method not really uninstalls the flow entries on the network devices, but updates them with a timeout, to let the MPI program finnish and close connections
         private void uninstallMPIFlow(Ip4Address peerIpAddress, int peerPort) {
             synchronized (MPIFlowRuleMutex) {
-                if (ActiveMPIFlowrules.containsKey(new Tuple2<>(peerIpAddress, peerPort))) {
-                    ActiveMPIFlowrules.get(new Tuple2<>(peerIpAddress, peerPort)).keySet().forEach(flowRule -> {
+                if (ActiveMPIFlowrules.containsKey(new MyTuple(peerIpAddress, peerPort))) {
+                    ActiveMPIFlowrules.get(new MyTuple(peerIpAddress, peerPort)).keySet().forEach(flowRule -> {
                         //First, install flowrule with same fields but with new timeout
                         FlowRule.Builder flow = DefaultFlowRule.builder().withSelector(flowRule.selector()).
                                 withTreatment(flowRule.treatment()).
@@ -627,6 +671,16 @@ public class MpiController implements MpiControllerInterface {
                         flowRuleService.removeFlowRules(flowRule);
 
                     });
+                }
+            }
+            synchronized (MPIEndpointsMutex2) {
+                if(ActiveMPIEndpoints.containsKey(new MyTuple(peerIpAddress, peerPort))){
+                    ArrayList<FlowRule> flows = ActiveMPIEndpoints.get(new MyTuple(peerIpAddress, peerPort));
+
+                    for (FlowRule flow : flows) {
+                        flowRuleService.removeFlowRules(flow);
+                    }
+                    ActiveMPIEndpoints.remove(new MyTuple(peerIpAddress, peerPort));
                 }
             }
         }
@@ -797,9 +851,6 @@ public class MpiController implements MpiControllerInterface {
                     withPriority(PacketPriority.HIGH.priorityValue()). //Higher priority to force use this flowrule
                             makePermanent();
 
-            /*TODO: delete permanent rule when receiving UDP end message from mpi endpoint
-             * */
-
             FlowRule installFlowrule = flowrule.build();
             //Apply rule - test this:
             flowRuleService.applyFlowRules(flowrule.build());
@@ -927,8 +978,8 @@ public class MpiController implements MpiControllerInterface {
 
                             ActiveFlowrules.remove(flowrule.id());
 
-                            /*TODO -> Reverse paths alter path weights, and more execution time are required to verify
-                                which paths are direct or reverse, so reverse paths are not balanced as they do not
+                            /*  Reverse paths alter path weights, and more execution time are required to verify
+                                which paths are direct or reverse, so reverse paths are not balanced as they usually do not
                                 handle data transfer in this use case, only tcp control replies (acks). Reverse paths
                                 are simply set up by using selected path and applying rules to destination devices
                                 of each link instead of source devices.
@@ -936,7 +987,11 @@ public class MpiController implements MpiControllerInterface {
                                 to connect, and this is the firs message of the conversation captured by the controller.
                                 In this use case, client always sends data to server, as client is always identified as
                                 sender, and server is always identified as receiver.
+
+                                To use balanced reverse paths, simply use selectBalancedPath() switching src and dst,
+                                instead of using the reverse path.
                             */
+
                             //Decrease usage of links when the flowrules that use them expire
                             synchronized (LinksMutex) {
                                 ActiveLinks.computeIfPresent(usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);

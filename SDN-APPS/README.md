@@ -3,6 +3,7 @@ This directory contains the ONOS developed apps, and the Ryu docker files for la
 ## ONOS
 ### mpi-controller
 Forwarding app that implements parallel links forwarding. Works with an OpenMPI modified version that notifies every mpi listener process to the controller using UDP messages at mpi_init time, and installs path flowrules on every switch at the topology before mpi communications starts using all available links, for maximizing overall bandwidth and link usage.
+- New: OpenMPI UDP notification updated. Now mpi_finalize is also notified, so the controller can remove the flowrules installed for the mpi communications.
 
 ### proactive-switch-app
 Proactive forwarding app that installs flowrules for every IP traffic detected on the topology. Simple forwarding app.

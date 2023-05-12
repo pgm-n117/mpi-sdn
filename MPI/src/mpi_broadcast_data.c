@@ -6,8 +6,8 @@
 
 
 /*
-mpirun --np <> --hostfile <> --mca btl tcp,self ./mpi_broadcast_data <filename> <size>
-example with file of size 1G and 4 nodes: mpirun --np 4 --hostfile <> --mca btl tcp,self ./mpi_broadcast_data <filename> 1000000 
+mpirun --np <> --hostfile <> --mca btl tcp,self ./mpi_broadcast_data <filename>
+example with file of size 1G and 4 nodes: mpirun --np 4 --hostfile <> --mca btl tcp,self ./mpi_broadcast_data <filename> 
 
 */
 
@@ -23,9 +23,8 @@ int main(int argc, char **argv){
     int node;					//Nº de tarea / proceso
     int size;					//Nº de procesos disponibles
     int error;
-    long int res; 
+    long int sizeoffile; 
     
-    int sizeoffile = atoi(argv[2]);
     char* fullfile;
     double time;
 
@@ -58,19 +57,18 @@ int main(int argc, char **argv){
         fseek(fp, 0L, SEEK_END);
         
         // calculating the size of the file
-        res = ftell(fp);
+        sizeoffile = ftell(fp);
+        
 
-        if(res != sizeoffile){
-            printf("Error al leer el fichero");
-
-        }
     }
+
+    MPI_Bcast(&sizeoffile, sizeof(sizeoffile), MPI_LONG, 0, MPI_COMM_WORLD);
 
     fullfile = (char*)malloc(sizeof(char)*sizeoffile); //Everybody allocates memory
 
     if(node == 0){
         rewind(fp);
-        if(fgets(fullfile, res, fp) != NULL){
+        if(fgets(fullfile, sizeoffile, fp) != NULL){
             printf("Fichero leido correctamente\n");
         }else{
 
@@ -86,6 +84,7 @@ int main(int argc, char **argv){
 
     if(node == 0) time -= MPI_Wtime();        //Inicio del contador de tiempo
     //Broadcast
+    printf("Broadcasting file to all nodes\n");
     MPI_Bcast(fullfile, sizeoffile, MPI_CHAR, 0, MPI_COMM_WORLD);
 
 

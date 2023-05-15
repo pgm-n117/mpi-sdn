@@ -93,9 +93,11 @@ int main(int argc, char **argv){
         MPI_Recv(&sizeoffile, sizeof(long), MPI_LONG, node-(size/2), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
         recvfile = (char*)malloc(sizeof(char)*sizeoffile);
+        int result;
 
-        if(MPI_Recv(recvfile, sizeoffile, MPI_CHAR, node-(size/2), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE) == MPI_SUCCESS){
-            printf("Datos recibidos en el nodo %d\n", node);
+        result = MPI_Recv(recvfile, sizeoffile, MPI_CHAR, node-(size/2), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        if(result == MPI_SUCCESS){
+            printf("Datos recibidos desde %d en nodo %d\n", node-(size/2), node);
         }
         
 

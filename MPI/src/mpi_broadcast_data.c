@@ -23,14 +23,14 @@ int main(int argc, char **argv){
     int node;					//Nº de tarea / proceso
     int size;					//Nº de procesos disponibles
     int error;
-    long int sizeoffile; 
-    
+    long int sizeoffile;
+
+    char* filename;
     char* fullfile;
     double time;
 
-    size_t filename_size = strlen(argv[1]);
-    char * filename = malloc(filename_size);
-    strcpy(filename, argv[1]);
+    
+
 
     FILE* fp;
 
@@ -44,6 +44,10 @@ int main(int argc, char **argv){
 
 
     if(node == 0){
+        size_t filename_size = strlen(argv[1]);
+
+        char * filename = malloc(filename_size);
+        strcpy(filename, argv[1]);
         
         // opening the file in read mode
         fp = fopen(filename, "r");
@@ -63,6 +67,7 @@ int main(int argc, char **argv){
     }
 
     MPI_Bcast(&sizeoffile, sizeof(sizeoffile), MPI_LONG, 0, MPI_COMM_WORLD);
+    printf("Size of file: %ld bytes\n", sizeoffile);
 
     fullfile = (char*)malloc(sizeof(char)*sizeoffile); //Everybody allocates memory
 
@@ -86,9 +91,10 @@ int main(int argc, char **argv){
     //Broadcast
     printf("Broadcasting file to all nodes\n");
     MPI_Bcast(fullfile, sizeoffile, MPI_CHAR, 0, MPI_COMM_WORLD);
+    printf("Broadcasting finished\n");
 
 
-
+    
     MPI_Barrier(MPI_COMM_WORLD);
     if(node == 0){
         time += MPI_Wtime();          //Final del contador de tiempo
@@ -99,10 +105,14 @@ int main(int argc, char **argv){
         
         printf("Tiempo de ejecución del segmento MPI: %f\n", time);
     }
+
+
     free(fullfile);
-    free(filename);
+    if(node == 0) free(filename);
+
 
     MPI_Finalize();				//Final de programa MPI
+
 
 }  
 

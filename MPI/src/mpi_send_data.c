@@ -26,7 +26,7 @@ int main(int argc, char **argv){
     long int sizeoffile; 
     
     FILE* fp;
-    int time;
+    double time;
     char* fullfile;
     char* recvfile;
     size_t filename_size = strlen(argv[1]);
@@ -107,7 +107,7 @@ int main(int argc, char **argv){
 
     if(node == 0){
         time += MPI_Wtime();          //End timer
-        printf("Tiempo de ejecución del segmento MPI: %d\n", time);
+        printf("Tiempo de ejecución del segmento MPI: %f\n", time);
     }
 
     if(node < size/2){

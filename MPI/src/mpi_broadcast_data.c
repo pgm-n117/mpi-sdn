@@ -20,25 +20,23 @@ int main(int argc, char **argv){
 
     int i;
 
-    int node;					//Nº de tarea / proceso
-    int size;					//Nº de procesos disponibles
+    static int node;					//task/process id
+    static int size;					//total available tasks
     int error;
-    long int sizeoffile;
+    static long int sizeoffile;
 
-    char* filename;
-    char* fullfile;
+    static char* filename;
+    static char* fullfile;
     double time;
-
-    
 
 
     FILE* fp;
 
 
-    //Inicio del programa paralelo
-    MPI_Init(&argc, &argv);			//Inicio de programa MPI
+    //Start MPI program
+    MPI_Init(&argc, &argv);
     
-    MPI_Comm_rank(MPI_COMM_WORLD, &node);	//Especifica el comunicador por defecto
+    MPI_Comm_rank(MPI_COMM_WORLD, &node);
 
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
@@ -66,7 +64,7 @@ int main(int argc, char **argv){
 
     }
 
-    MPI_Bcast(&sizeoffile, sizeof(sizeoffile), MPI_LONG, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&sizeoffile, sizeof(sizeoffile), MPI_INT, 0, MPI_COMM_WORLD);
     printf("Size of file: %ld bytes\n", sizeoffile);
 
     fullfile = (char*)malloc(sizeof(char)*sizeoffile); //Everybody allocates memory
@@ -74,44 +72,44 @@ int main(int argc, char **argv){
     if(node == 0){
         rewind(fp);
         if(fgets(fullfile, sizeoffile, fp) != NULL){
-            printf("Fichero leido correctamente\n");
+            printf("File succesfuly read\n");
         }else{
 
-            printf("Fichero no leido correctamente\n");
-        } 
-        
-        
-        
-        
+            printf("Error reading file\n");
+        }     
     }
 
+
+    //printf("Broadcasting file to all nodes\n");
     MPI_Barrier(MPI_COMM_WORLD);
 
-    if(node == 0) time -= MPI_Wtime();        //Inicio del contador de tiempo
+    if(node == 0) time -= MPI_Wtime();        //start timer
+    
     //Broadcast
-    printf("Broadcasting file to all nodes\n");
     MPI_Bcast(fullfile, sizeoffile, MPI_CHAR, 0, MPI_COMM_WORLD);
-    printf("Broadcasting finished\n");
+
 
 
     
     MPI_Barrier(MPI_COMM_WORLD);
+       
     if(node == 0){
-        time += MPI_Wtime();          //Final del contador de tiempo
-
-          
-        // closing the file
+        time += MPI_Wtime();          //end timer
+        printf("MPI Execution time: %f\n", time);
+  
+        //closing the file
         fclose(fp);
         
-        printf("Tiempo de ejecución del segmento MPI: %f\n", time);
+        
     }
 
+    //printf("Broadcasting finished\n"); 
 
     free(fullfile);
     if(node == 0) free(filename);
 
 
-    MPI_Finalize();				//Final de programa MPI
+    MPI_Finalize();
 
 
 }  

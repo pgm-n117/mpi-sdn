@@ -18,3 +18,4 @@ test/
 bak/
 *.iml
 SDN-APPS/ryu/.build-docker
+*.file

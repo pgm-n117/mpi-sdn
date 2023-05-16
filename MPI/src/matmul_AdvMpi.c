@@ -102,11 +102,12 @@ int main(int argc, char **argv){
     	        print_matrix(mB, iB, jB);
             }
         }
+
     
     }
 
 
-    time -= MPI_Wtime();        //Inicio del contador de tiempo
+    if(node == 0) time = -MPI_Wtime();	//Inicio del contador de tiempo
             
     //Broadcast de la matriz B: MPI_Bcast(...)
     MPI_Bcast(mB, iB*jB, MPI_DOUBLE, 0, MPI_COMM_WORLD);

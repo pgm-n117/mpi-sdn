@@ -373,6 +373,7 @@ public class MpiController implements MpiControllerInterface {
                                         log.error(e.toString());
                                         e.printStackTrace();
                                     }
+                                    return;
                                 }
                             }
                         }
@@ -543,7 +544,7 @@ public class MpiController implements MpiControllerInterface {
 
                     //Reverse path
                     FlowRule LocalMPIReverseFlow = installMPIPathFlowRule(sourceHost.location(), protocol, dstIpAddress, srcIp, srcIpPort, dstIpPort, true);
-                    registerFlow(dstIpAddress, dstIpPort, LocalMPIFlow, null, true);
+                    registerFlow(dstIpAddress, dstIpPort, LocalMPIReverseFlow, null, true);
                 }
                 return;
             }

@@ -331,29 +331,30 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             log.info("      SOURCE AND DESTINATION ON DIFFERENT NETWORK DEVICES");
             //Source and destination hosts are under different network devices
             Set<Path> paths = topologyService.getPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId);
-            Set<Path> reversePaths = topologyService.getPaths(topologyService.currentTopology(), OutputDeviceId, InputDeviceId);
+            //Set<Path> reversePaths = topologyService.getPaths(topologyService.currentTopology(), OutputDeviceId, InputDeviceId);
 
             Path path = selectPaths(paths, InputDevicePort);
-            Path reversePath = selectPaths(reversePaths, OutputDevicePort);
-            if(path != null && reversePath != null){
+            //Path reversePath = selectPaths(reversePaths, OutputDevicePort);
+            //Path reversePath = path.links().
+            if(path != null){
                 log.info("FOUND PATHS FOR HOSTS: "+srcIp.toString()+" - "+dstIp.toString());
                 log.info(path.toString());
-                log.info(reversePath.toString());
                 //Install flowrules on each network device involved on the path. Installing for both initial and reverse paths.
 
                 path.links().forEach(l -> {
+                    //Path Flowrule
                     installPathFlowRule(l.src(), protocol, srcIp, srcIpPort, dstIp, dstIpPort);
+
+                    //Reverse path flowrule
+                    installPathFlowRule(l.dst(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
                 });
                 //Install flowrule on last device (redirect to host)
+                //Default path
                 installPathFlowRule(dstHost.location(), OutputDevicePort, dstMac, protocol, srcIp, srcIpPort, dstIp, dstIpPort);
 
-                reversePath.links().forEach(l -> {
-                    installPathFlowRule(l.src(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
-                });
-                //Install flowrule on last device of reverse path
+                //Reverse path
                 installPathFlowRule(context.inPacket().receivedFrom(), InputDevicePort, dstMac, protocol, dstIp, dstIpPort, srcIp, srcIpPort);
 
-                return;
             }
             else{
 

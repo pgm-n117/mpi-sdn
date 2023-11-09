@@ -151,17 +151,17 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
 
 
-    //@Override
-    /*public void someMethod() {
-        log.info("Invoked");
-    }*/
-
     private class ProactiveSwitchProcessor implements PacketProcessor{
 
         @Override
         public void process(PacketContext context) {
 
             InboundPacket packet = context.inPacket();
+
+            if (context.isHandled()) {
+                return;
+            }
+
             Ethernet ethPacket = packet.parsed();
             if(ethPacket == null) return;
 
@@ -290,7 +290,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                             e.printStackTrace();
                         }
                         //Packet to table: send packet to network device which came from. Will be redirected using the installed flowrule.
-                        packetToTable(context);
+                        //packetToTable(context);
                     }
 
 
@@ -298,7 +298,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     break;
 
                 default:
-                    log.info("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
+                    //log.info("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
                     return;
             }
 
@@ -337,8 +337,8 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
             //Path reversePath = selectPaths(reversePaths, OutputDevicePort);
             //Path reversePath = path.links().
             if(path != null){
-                log.info("FOUND PATHS FOR HOSTS: "+srcIp.toString()+" - "+dstIp.toString());
-                log.info(path.toString());
+                log.info("FOUND PATHS FOR HOSTS: "+srcIp.toString()+" - "+dstIp.toString()+" --- "+path.links().toString());
+                //log.info(path.toString());
                 //Install flowrules on each network device involved on the path. Installing for both initial and reverse paths.
 
                 path.links().forEach(l -> {
@@ -353,7 +353,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                 installPathFlowRule(dstHost.location(), OutputDevicePort, dstMac, protocol, srcIp, srcIpPort, dstIp, dstIpPort);
 
                 //Reverse path
-                installPathFlowRule(context.inPacket().receivedFrom(), InputDevicePort, dstMac, protocol, dstIp, dstIpPort, srcIp, srcIpPort);
+                installPathFlowRule(context.inPacket().receivedFrom(), InputDevicePort, context.inPacket().parsed().getSourceMAC(), protocol, dstIp, dstIpPort, srcIp, srcIpPort);
 
             }
             else{
@@ -365,12 +365,29 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
 
         }
 
-        //Select a path which first jump does not match with input port (possible cicle)
+        //ATTENTION: This function is topology dependent for a specific project. Use with caution.
+        //Select the first path, trying to imitate L2 switch behaviour (although it is not the real L2 switch behaviour)
+        //This ensures that every time we request a src-dst path, will be the same, with the current topology.
+        private Path selectFirstPath(Set<Path> paths, DeviceId device, PortNumber inputDevicePort) {
+            Path auxPath = null;
+            for(Path p : paths){
+                auxPath = p;
+                if(p.links().get(0).src().port().equals(PortNumber.portNumber(1))){
+                    //log.info("--- FIRST JUMP: "+p.links().get(0).src().port().toString()+" ---");
+                    return p;
+                }
+
+            }
+            //log.info("---AUX FIRST JUMP: "+auxPath.links().get(0).src().port().toString()+" ---");
+            return auxPath;
+        }
+
+        //Select a path which first jump does not match with packet input port (possible cicle)
         private Path selectPaths(Set<Path> paths, PortNumber inputDevicePort) {
             Path auxPath = null;
             for(Path p : paths){
                 auxPath = p;
-                if(!p.src().port().equals(inputDevicePort)) return p;
+                if(!p.links().get(0).src().port().equals(inputDevicePort)) return p;
 
             }
 
@@ -378,7 +395,7 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
         }
 
 
-        //Install path flowrule -> return id of flowrule installed?
+        //Install path flowrule
         private void installPathFlowRule(ConnectPoint dstConnectionPoint, byte protocol, Ip4Address srcIp, int srcIpPort,
                                          Ip4Address dstIp, int dstIpPort) {
 
@@ -406,17 +423,16 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withTreatment(treatment.build()).
                     fromApp(appId).
                     forDevice(dstConnectionPoint.deviceId()).
-                    withPriority(40000).
+                    withPriority(PacketPriority.MEDIUM.priorityValue()).
                     makeTemporary(10);
 
 
-            //Apply rule - test this:
+            //Apply rule
             flowRuleService.applyFlowRules(flowrule.build());
-            return;
         }
 
 
-        //Install path flowrule for specific device output port and destination mac. -> return id of flowrule installed?
+        //Install path flowrule for specific device output port and destination mac.
         private void installPathFlowRule(ConnectPoint dstConnectionPoint, PortNumber outputPort, MacAddress dstMac, byte protocol,
                                                       Ip4Address srcIp, int srcIpPort, Ip4Address dstIp, int dstIpPort) {
 
@@ -444,17 +460,19 @@ public class ProactiveSwitch implements ProactiveSwitchInterface {
                     withTreatment(treatment.build()).
                     fromApp(appId).
                     forDevice(dstConnectionPoint.deviceId()).
-                    withPriority(40000).
+                    withPriority(PacketPriority.MEDIUM.priorityValue()).
                     makeTemporary(10);
 
 
-            //Apply rule - test this:
+            //Apply rule
             flowRuleService.applyFlowRules(flowrule.build());
-            return;
         }
 
         //Send the packet to the table which came from. The new flowrule should take care of it.
-
+        /* This functions causes problems with high number of flows. Maybe because it returns too many packets
+         * to the table before the flowrules for each traffic path are installed. For the moment we will not use it.
+         * Just wait for packets to be re-send from the host.
+         */
         private void packetToTable(PacketContext context) {
             //Wait for flowrule to activate
             try { Thread.sleep(100); } catch (InterruptedException ignored) { }

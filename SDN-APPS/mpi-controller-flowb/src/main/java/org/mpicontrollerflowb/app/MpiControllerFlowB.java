@@ -1,7 +1,6 @@
 /*
  *
  *
- * * * * * * TODO: ELIMINAR LA PARTE QUE SOBRA, SOLAMENTE GESTIONAR LO DE LAS RUTAS DE MPI * * * * * *
  *
  *
  * Copyright 2021-present Open Networking Foundation
@@ -25,7 +24,6 @@ import org.apache.commons.lang.exception.ExceptionUtils;
 import org.onlab.graph.DefaultEdgeWeigher;
 import org.onlab.graph.ScalarWeight;
 import org.onlab.graph.Weight;
-import org.onlab.metrics.MetricsService;
 import org.onlab.packet.*;
 import org.onosproject.cfg.ComponentConfigService;
 import org.onosproject.core.ApplicationId;
@@ -36,9 +34,7 @@ import org.onosproject.net.edge.EdgePortService;
 import org.onosproject.net.flow.*;
 import org.onosproject.net.host.HostService;
 import org.onosproject.net.packet.*;
-import org.onosproject.net.statistic.FlowStatisticService;
 import org.onosproject.net.statistic.PortStatisticsService;
-import org.onosproject.net.statistic.StatisticService;
 import org.onosproject.net.topology.*;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
@@ -74,8 +70,6 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
     /**
      * Some configurable property.
      */
-    private String someProperty;
-
 
     //---RELEVANT AND NECESSARY SERVICES FOR APP---//
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
@@ -99,9 +93,6 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected TopologyService topologyService;
 
-    //new services for BW balancer
-    @Reference(cardinality = ReferenceCardinality.MANDATORY)
-    protected StatisticService statisticService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected DeviceService deviceService;
@@ -109,11 +100,6 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected PortStatisticsService portStatisticsService;
 
-    @Reference(cardinality = ReferenceCardinality.MANDATORY)
-    protected MetricsService metricsService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY)
-    protected FlowStatisticService flowStatisticService;
 
     protected FlowWeigher flowWeigher;
 
@@ -144,7 +130,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
     private Object FlowRuleMutex = new Object();
 
 
-    //HashMap Structure: <MPI Endpoint Pair(IpAddres-Port), Map<FlowId, Link>>:
+    //HashMap Structure: <MPI Endpoint Pair(IpAddress-Port), Map<FlowId, Link>>:
     // Contains the active flowrules for every MPI Endpoint Pair and the links they are using
 
     private ConcurrentMap<MyTuple, HashMap<FlowRule, Link>> ActiveMPIFlowrules = new ConcurrentHashMap<>(); //Active flowrules (id) and the link its using
@@ -158,16 +144,15 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
     private ConcurrentMap<Link, Double> ActiveMPILinks = new ConcurrentHashMap<>(); //Links and their usage by active paths (times used by a flowrule) -> for load balancing
     private Object MPILinksMutex = new Object();
 
-    private ConcurrentMap<DeviceId, Boolean> EdgeDevices = new ConcurrentHashMap<>();
 
 
 
 
     //Address to notify MPI tasks
-    private Ip4Address MPI_CONTROLLER_IP = Ip4Address.valueOf("11.0.0.100");
-    private int MPI_CONTROLLER_NET_MASK = 24;
-    private IpPrefix MPI_CONTROLLER_NET = IpPrefix.valueOf(MPI_CONTROLLER_IP, MPI_CONTROLLER_NET_MASK);
-    private MacAddress MPI_CONTROLLER_MAC = MacAddress.valueOf("00:00:00:00:00:01");
+    private final Ip4Address MPI_CONTROLLER_IP = Ip4Address.valueOf("11.0.0.100");
+    private final int MPI_CONTROLLER_NET_MASK = 24;
+    private final IpPrefix MPI_CONTROLLER_NET = IpPrefix.valueOf(MPI_CONTROLLER_IP, MPI_CONTROLLER_NET_MASK);
+    private final MacAddress MPI_CONTROLLER_MAC = MacAddress.valueOf("00:00:00:00:00:01");
 
     int MAXPATHS;
 
@@ -184,7 +169,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
             //Obtain app id
             appId = coreService.getAppId("org.mpicontrollerflowb.app");
 
-            //Procesador de paquetes
+            //Packet Processor
             mpiControllerProcessor = new mpiControllerProcessor();
             packetService.addProcessor(mpiControllerProcessor, PacketProcessor.director(3));
 
@@ -196,18 +181,17 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                 packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_ARP).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
                 //IPV4
                 packetService.requestPackets(DefaultTrafficSelector.builder().matchEthType(Ethernet.TYPE_IPV4).build(), PacketPriority.REACTIVE, appId, Optional.of(connectPoint.deviceId()));
-                EdgeDevices.putIfAbsent(connectPoint.deviceId(), true);
             });
 
             flowRuleService.addListener(flowRuleListener);
             //TODO: This is hardcoded, is calculated based on the number of uplinks from an edge switch to the core, and the number of links from a core witch to the edge layer
             MAXPATHS = 2 * 1; //Uplinks from edge source to core : 2, downlinks from core switch to edge destination: 1
-            log.info("MPI-CONTROLLER -- MAXPATHS: " + MAXPATHS);
+            log.info("MPI-CONTROLLER -- MAX-PATHS: " + MAXPATHS);
 
-            flowWeigher = new FlowWeigher(/* 0.05, 0.001*/); //TODO: CHECK
+            flowWeigher = new FlowWeigher();
 
         } catch (Exception ex) {
-            log.info("------------ERROR EN ACTIVATE------------" + ex.toString());
+            log.info("------------ERROR EN ACTIVATE------------" + ex);
         }
     }
 
@@ -432,7 +416,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                                         }
                                     }
                                 }
-                                log.info(" ***** MPI ENDPOINT REMOVED: " + peerIpAddress.toString() + ":" + peerPort);
+                                log.info(" ***** MPI ENDPOINT REMOVED: " + peerIpAddress + ":" + peerPort);
                                 //Uninstall MPI Flows of an endpoint on every switch
                                 uninstallMPIFlow(peerIpAddress, peerPort);
 
@@ -457,7 +441,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                                         MPIEndpoints.putIfAbsent(peerIpAddress, MPIPeer);
                                     }
                                 }
-                                log.info(" ***** MPI ENDPOINT ADDED: " + peerIpAddress.toString() + ":" + peerPort);
+                                log.info(" ***** MPI ENDPOINT ADDED: " + peerIpAddress + ":" + peerPort);
 
                                 try {
                                 synchronized (MPIEndpointsMutex){
@@ -495,10 +479,10 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                             try {
 
                                 if (!MPI_CONTROLLER_NET.contains(IpPrefix.valueOf(peerIpAddress, MPI_CONTROLLER_NET_MASK))) {
-                                    log.info(" ***** EXCLUDING MPI ENDPOINT: " + peerIpAddress.toString() + ", NOT IN MPI CONTROLLER NETWORK");
+                                    log.info(" ***** EXCLUDING MPI ENDPOINT: " + peerIpAddress + ", NOT IN MPI CONTROLLER NETWORK");
                                     return;
                                 } else {
-                                    log.info(" ***** NEW MPI ENDPOINT: " + peerIpAddress.toString() + ":" + peerPort);
+                                    log.info(" ***** NEW MPI ENDPOINT: " + peerIpAddress + ":" + peerPort);
                                     //log.info("      MPI ENDPOINT ADDR INFO: "+ Ip4Address.valueOf(PeerAddr[0]) + ":" + Integer.reverseBytes(PeerAddr[1]));
                                 }
                             } catch (Exception ex) {
@@ -535,7 +519,6 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
 
                 default:
                     //log.info("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
-                    return;
             }
 
         }
@@ -572,6 +555,8 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
             //log.info("      SOURCE AND DESTINATION ON DIFFERENT NETWORK DEVICES");
             //Source and destination hosts are under different network devices
 
+            //TODO: Remove this line when tested
+            log.info(ActiveLinks.toString());
             Set<Path> paths = topologyService.getKShortestPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId, flowWeigher, MAXPATHS);
             log.info("AVAILABLE MPI PATHS: "+paths.toString());
 
@@ -653,7 +638,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
 
         private void unregisterFlow(Ip4Address dstIpAddress, int dstPort, boolean MPI) {
             //Remove flowrule and update links usage
-            Collection usedLinks = new ArrayList<Link>();
+            Collection<Link> usedLinks = new ArrayList<>();
 
             if(MPI) {
                 synchronized (MPIFlowRuleMutex) {
@@ -667,7 +652,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                 synchronized (MPILinksMutex) {
                     for (Object usedLink : usedLinks) {
                         if (usedLink != null)
-                        ActiveMPILinks.computeIfPresent((Link) usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);
+                            ActiveMPILinks.computeIfPresent((Link) usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);
                     }
                 }
             }//else{
@@ -772,7 +757,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
             }
         }
 
-        //Select a path which first jump does not match with input port (to avoid possible cicle)
+        //Select a path which first jump does not match with input port (to avoid possible cycle)
         private Path selectPaths(Set<Path> paths, PortNumber inputDevicePort) {
             Path auxPath = null;
             for (Path p : paths) {
@@ -784,7 +769,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
             return auxPath;
         }
 
-        //Select a path which first jump does not match with input port (to avoid possible cicle). Balanced paths version
+        //Select a path which first jump does not match with input port (to avoid possible cycle). Balanced bandwidth version
         private Path selectBWBalancedPaths(Set<Path> paths, PortNumber inputDevicePort, boolean MPI) {
             Path defPath = null;
             Path auxPath = null;
@@ -807,7 +792,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                         //port used bandwidth in Bytes per second
                         //portStatisticsService.load(link.src(), PortStatisticsService.MetricType.BYTES).rate;
 
-                        //Build temp path with links weigths
+                        //Build temp path with links weights
                         if (MPI) {
                             synchronized (MPILinksMutex) {
                                 auxScore += portStatisticsService.load(link.src(), PortStatisticsService.MetricType.BYTES).rate()*8.0/maxLink;
@@ -851,7 +836,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                 if (!p.src().port().equals(inputDevicePort)) {
                     //For each link in the path, if links are not used, or are the less used, we took that path (load balancing)
                     for (Link link : p.links()) {
-                        //Build temp path with links weigths
+                        //Build temp path with links weights
                         if (MPI) {
                             synchronized (MPILinksMutex) {
                                 auxScore += ActiveMPILinks.getOrDefault(link, 0.0);
@@ -993,13 +978,12 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
 
             //Apply rule - test this:
             flowRuleService.applyFlowRules(flowrule.build());
-            return;
         }
 
         //Send the packet to the table which came from. The new flowrule should take care of it.
 
         private void packetToTable(PacketContext context) {
-            //Wait for flowrule to activate (miliseconds)
+            //Wait for flowrule to activate (milliseconds)
             try {
                 Thread.sleep(100);
             } catch (InterruptedException ignored) {
@@ -1125,7 +1109,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
 
         @Override
         public Weight getNonViableWeight() {
-            return ScalarWeight.NON_VIABLE_WEIGHT;
+            return super.getNonViableWeight();
         }
     }
 

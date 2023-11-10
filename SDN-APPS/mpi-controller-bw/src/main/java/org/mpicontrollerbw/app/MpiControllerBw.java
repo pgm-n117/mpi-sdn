@@ -1,7 +1,6 @@
 /*
  *
  *
- * * * * * * TODO: ELIMINAR LA PARTE QUE SOBRA, SOLAMENTE GESTIONAR LO DE LAS RUTAS DE MPI * * * * * *
  *
  *
  * Copyright 2021-present Open Networking Foundation
@@ -144,7 +143,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
     private Object FlowRuleMutex = new Object();
 
 
-    //HashMap Structure: <MPI Endpoint Pair(IpAddres-Port), Map<FlowId, Link>>:
+    //HashMap Structure: <MPI Endpoint Pair(IpAddress-Port), Map<FlowId, Link>>:
     // Contains the active flowrules for every MPI Endpoint Pair and the links they are using
 
     private ConcurrentMap<MyTuple, HashMap<FlowRule, Link>> ActiveMPIFlowrules = new ConcurrentHashMap<>(); //Active flowrules (id) and the link its using
@@ -183,7 +182,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
             //Obtain app id
             appId = coreService.getAppId("org.mpicontrollerbw.app");
 
-            //Procesador de paquetes
+            //Packet Processor
             mpiControllerProcessor = new mpiControllerProcessor();
             packetService.addProcessor(mpiControllerProcessor, PacketProcessor.director(3));
 
@@ -204,7 +203,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
             bwWeigher = new BwWeigher( 0.05, 0.001);
 
         } catch (Exception ex) {
-            log.info("------------ERROR EN ACTIVATE------------" + ex.toString());
+            log.info("------------ERROR EN ACTIVATE------------" + ex);
         }
     }
 
@@ -445,7 +444,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
                                         }
                                     }
                                 }
-                                log.info(" ***** MPI ENDPOINT REMOVED: " + peerIpAddress.toString() + ":" + peerPort);
+                                log.info(" ***** MPI ENDPOINT REMOVED: " + peerIpAddress + ":" + peerPort);
                                 //Uninstall MPI Flows of an endpoint on every switch
                                 uninstallMPIFlow(peerIpAddress, peerPort);
 
@@ -470,7 +469,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
                                         MPIEndpoints.putIfAbsent(peerIpAddress, MPIPeer);
                                     }
                                 }
-                                log.info(" ***** MPI ENDPOINT ADDED: " + peerIpAddress.toString() + ":" + peerPort);
+                                log.info(" ***** MPI ENDPOINT ADDED: " + peerIpAddress + ":" + peerPort);
                                 //Install specific flows to capture first MPI packets on every edge switch
                                 edgePortService.getEdgePoints().forEach(connectPoint -> {
                                     FlowRule.Builder endpointFlowRule = DefaultFlowRule.builder().
@@ -507,10 +506,10 @@ public class MpiControllerBw implements MpiControllerBwInterface {
                             try {
 
                                 if (!MPI_CONTROLLER_NET.contains(IpPrefix.valueOf(peerIpAddress, MPI_CONTROLLER_NET_MASK))) {
-                                    log.info(" ***** EXCLUDING MPI ENDPOINT: " + peerIpAddress.toString() + ", NOT IN MPI CONTROLLER NETWORK");
+                                    log.info(" ***** EXCLUDING MPI ENDPOINT: " + peerIpAddress + ", NOT IN MPI CONTROLLER NETWORK");
                                     return;
                                 } else {
-                                    log.info(" ***** NEW MPI ENDPOINT: " + peerIpAddress.toString() + ":" + peerPort);
+                                    log.info(" ***** NEW MPI ENDPOINT: " + peerIpAddress + ":" + peerPort);
                                     //log.info("      MPI ENDPOINT ADDR INFO: "+ Ip4Address.valueOf(PeerAddr[0]) + ":" + Integer.reverseBytes(PeerAddr[1]));
                                 }
                             } catch (Exception ex) {
@@ -547,7 +546,6 @@ public class MpiControllerBw implements MpiControllerBwInterface {
 
                 default:
                     //log.info("Default - Received packet based on protocol: "+EthType.EtherType.lookup(ethPacket.getEtherType()));
-                    return;
             }
 
         }
@@ -587,7 +585,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
 
             //Set<Path> paths = topologyService.getPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId, bwWeigher);
 
-            //Select possible paths. Used links in paths are anotated in ActiveLinks
+            //Select possible paths. Used links in paths are annotated in ActiveLinks
             Path path = selectBWBalancedPaths(paths, InputDevicePort, true);
             //Path reversePath = selectMPIPaths(reversePaths, OutputDevicePort, true);
 
@@ -620,7 +618,6 @@ public class MpiControllerBw implements MpiControllerBwInterface {
 
                 log.info("*********NEW MPI PATHS********* :\n " + Arrays.asList(ActiveMPILinks));
 
-                return;
             } else {
 
                 //bad things
@@ -635,7 +632,6 @@ public class MpiControllerBw implements MpiControllerBwInterface {
 
 
         private void registerFlow(Ip4Address dstIpAddress, int dstPort, FlowRule flowrule, Link l, boolean MPI) {
-            //TODO: CHECK - Save flowrule and update links usage
             if(MPI) {
                 synchronized (MPIFlowRuleMutex) {
                     MyTuple Endpoint = new MyTuple(dstIpAddress, dstPort);
@@ -679,7 +675,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
                 synchronized (MPILinksMutex) {
                     for (Object usedLink : usedLinks) {
                         if (usedLink != null)
-                        ActiveMPILinks.computeIfPresent((Link) usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);
+                            ActiveMPILinks.computeIfPresent((Link) usedLink, (key, val) -> val > 0.0 ? val - 1.0 : 0.0);
                     }
                 }
             }//else{
@@ -797,7 +793,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
             }
         }
 
-        //Select a path which first jump does not match with input port (to avoid possible cicle)
+        //Select a path which first jump does not match with input port (to avoid possible cycle)
         private Path selectPaths(Set<Path> paths, PortNumber inputDevicePort) {
             Path auxPath = null;
             for (Path p : paths) {
@@ -809,7 +805,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
             return auxPath;
         }
 
-        //Select a path which first jump does not match with input port (to avoid possible cicle). Balanced paths version
+        //Select a path which first jump does not match with input port (to avoid possible cycle). Balanced paths version
         private Path selectBWBalancedPaths(Set<Path> paths, PortNumber inputDevicePort, boolean MPI) {
             Path defPath = null;
             Path auxPath = null;
@@ -832,7 +828,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
                         //port used bandwidth in Bytes per second
                         //portStatisticsService.load(link.src(), PortStatisticsService.MetricType.BYTES).rate;
 
-                        //Build temp path with links weigths
+                        //Build temp path with links weights
                         if (MPI) {
                             synchronized (MPILinksMutex) {
                                 auxScore += portStatisticsService.load(link.src(), PortStatisticsService.MetricType.BYTES).rate()*8/maxLink;
@@ -876,7 +872,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
                 if (!p.src().port().equals(inputDevicePort)) {
                     //For each link in the path, if links are not used, or are the less used, we took that path (load balancing)
                     for (Link link : p.links()) {
-                        //Build temp path with links weigths
+                        //Build temp path with links weights
                         if (MPI) {
                             synchronized (MPILinksMutex) {
                                 auxScore += ActiveMPILinks.getOrDefault(link, 0.0);
@@ -1156,7 +1152,7 @@ public class MpiControllerBw implements MpiControllerBwInterface {
                 //Weight linkWeight = new ScalarWeight(HOP_WEIGHT_VALUE + bwRate / maxLink);
 
 
-                //If link is used over the bandwidth limit, return non viable weight
+                //If link is used over the bandwidth limit, return non-viable weight
                 if(occupancy > Bandwidth_Limit - this.Sameness_Limit){
                     return ScalarWeight.toWeight(Double.POSITIVE_INFINITY);
                 }
@@ -1185,10 +1181,6 @@ public class MpiControllerBw implements MpiControllerBwInterface {
             return ScalarWeight.toWeight(0.0);
         }
 
-        @Override
-        public Weight getNonViableWeight() {
-            return ScalarWeight.NON_VIABLE_WEIGHT;
-        }
     }
 
 

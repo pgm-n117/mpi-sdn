@@ -70,6 +70,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
     /**
      * Some configurable property.
      */
+    private String someProperty;
 
     //---RELEVANT AND NECESSARY SERVICES FOR APP---//
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
@@ -555,8 +556,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
             //log.info("      SOURCE AND DESTINATION ON DIFFERENT NETWORK DEVICES");
             //Source and destination hosts are under different network devices
 
-            //TODO: Remove this line when tested
-            log.info(ActiveLinks.toString());
+
             Set<Path> paths = topologyService.getKShortestPaths(topologyService.currentTopology(), InputDeviceId, OutputDeviceId, flowWeigher, MAXPATHS);
             log.info("AVAILABLE MPI PATHS: "+paths.toString());
 
@@ -593,7 +593,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                 registerFlow(dstIpAddress, dstIpPort, finalReverseFlow, null, true);
 
 
-                //log.info("*********NEW MPI PATHS********* :\n " + Arrays.asList(ActiveMPILinks));
+                log.info("*********NEW MPI PATHS********* :\n " + Arrays.asList(ActiveMPILinks));
 
             } else {
 
@@ -675,7 +675,7 @@ public class MpiControllerFlowB implements MpiControllerFlowBInterface {
                                 makeTemporary(100); //Timeout to let the MPI program finnish and close connections
                         flowRuleService.applyFlowRules(flow.build());
                         //Last, remove old flowrule
-                        //TODO: see if this is necessary: flowRuleService.removeFlowRules(flowRule);
+                        flowRuleService.removeFlowRules(flowRule);
 
                     });
                 }
